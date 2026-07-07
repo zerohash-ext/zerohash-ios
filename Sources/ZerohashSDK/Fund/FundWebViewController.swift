@@ -131,23 +131,28 @@ class FundWebViewController: UIViewController,
             })();
             """,
             injectionTime: .atDocumentStart,
-            forMainFrameOnly: false
+            forMainFrameOnly: true
         )
         userContentController.addUserScript(consoleBridge)
 
         let networkBridge = WKUserScript(
             source: """
             (function() {
+                function stripQuery(url) {
+                    var q = url.indexOf('?');
+                    return q === -1 ? url : url.substring(0, q);
+                }
                 var _fetch = window.fetch;
                 window.fetch = function(input, init) {
                     var url = typeof input === 'string' ? input : (input && input.url) || '';
                     var method = (init && init.method) || (input && input.method) || 'GET';
-                    console.log('[Network] ' + method.toUpperCase() + ' ' + url);
+                    var safe = stripQuery(url);
+                    console.log('[Network] ' + method.toUpperCase() + ' ' + safe);
                     return _fetch.apply(this, arguments).then(function(response) {
-                        console.log('[Network] ' + response.status + ' ' + method.toUpperCase() + ' ' + url);
+                        console.log('[Network] ' + response.status + ' ' + method.toUpperCase() + ' ' + safe);
                         return response;
                     }).catch(function(err) {
-                        console.error('[Network] FAILED ' + method.toUpperCase() + ' ' + url + ' — ' + err);
+                        console.error('[Network] FAILED ' + method.toUpperCase() + ' ' + safe + ' — ' + err);
                         throw err;
                     });
                 };
@@ -161,20 +166,20 @@ class FundWebViewController: UIViewController,
                 };
                 XMLHttpRequest.prototype.send = function() {
                     var method = this._zhMethod || 'XHR';
-                    var url = this._zhUrl || '';
-                    console.log('[Network] ' + method.toUpperCase() + ' ' + url);
+                    var safe = stripQuery(this._zhUrl || '');
+                    console.log('[Network] ' + method.toUpperCase() + ' ' + safe);
                     this.addEventListener('load', function() {
-                        console.log('[Network] ' + this.status + ' ' + method.toUpperCase() + ' ' + url);
+                        console.log('[Network] ' + this.status + ' ' + method.toUpperCase() + ' ' + safe);
                     });
                     this.addEventListener('error', function() {
-                        console.error('[Network] FAILED ' + method.toUpperCase() + ' ' + url);
+                        console.error('[Network] FAILED ' + method.toUpperCase() + ' ' + safe);
                     });
                     return _send.apply(this, arguments);
                 };
             })();
             """,
             injectionTime: .atDocumentStart,
-            forMainFrameOnly: false
+            forMainFrameOnly: true
         )
         userContentController.addUserScript(networkBridge)
         #endif
@@ -247,20 +252,38 @@ class FundWebViewController: UIViewController,
         mobileTarget: String?
     ) {
         guard let parsedURL = URL(string: url) else { return }
+        let scheme = parsedURL.scheme?.lowercased() ?? ""
 
         switch mobileTarget {
         case "in_app":
+            guard scheme == "https" || scheme == "http" else { return }
             navigationController?.setNavigationBarHidden(false, animated: true)
             let subVC = SubViewController(urlString: url, theme: theme, environment: environment)
             navigationController?.pushViewController(subVC, animated: true)
 
         case "oauth":
+            guard scheme == "https" else {
+                Log.error("[Fund] Blocked oauth navigation to non-https URL")
+                return
+            }
             let safariVC = SFSafariViewController(url: parsedURL)
             safariVC.delegate = self
             safariVC.preferredControlTintColor = .systemBlue
             present(safariVC, animated: true)
 
         default:
+            let safeSchemes: Set<String> = ["https", "http", "tel", "mailto", "sms"]
+            guard safeSchemes.contains(scheme) else {
+                Log.error("[Fund] Blocked external navigation to unknown scheme: \(scheme)")
+                return
+            }
+            if scheme == "https" || scheme == "http" {
+                let host = parsedURL.host ?? ""
+                guard environment.trustedHosts.contains(host) else {
+                    Log.error("[Fund] Blocked external navigation to untrusted host: \(host)")
+                    return
+                }
+            }
             UIApplication.shared.open(parsedURL, options: [:], completionHandler: nil)
         }
     }

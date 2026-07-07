@@ -10,10 +10,10 @@
 Use **PascalCase**:
 
 ```swift
-class WebViewMessageHandler { }
-struct AuthCallbacks { }
+class FundWebViewMessageHandler { }
+struct FundCallbacks { }
 enum Environment { }
-protocol WebViewMessageHandlerDelegate { }
+protocol FundWebViewMessageHandlerDelegate { }
 ```
 
 ### Variables, Functions, Parameters

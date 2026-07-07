@@ -1,5 +1,5 @@
-import WebKit
 import Foundation
+import WebKit
 
 class WebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
 
@@ -15,10 +15,14 @@ class WebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationDeleg
 
     // MARK: - Initialization
 
-    init(jwt: String, appIdentifier: String, environment: Environment, callbacks: ZerohashCallbacks, onClose: @escaping () -> Void) {
+    init(
+        jwt: String, appIdentifier: String, environment: Environment, callbacks: ZerohashCallbacks,
+        onClose: @escaping () -> Void
+    ) {
         self.jwt = jwt
         self.appIdentifier = appIdentifier
-        self.appIdentifierEventPrefix = appIdentifier.replacingOccurrences(of: "-", with: "_").uppercased()
+        self.appIdentifierEventPrefix = appIdentifier.replacingOccurrences(of: "-", with: "_")
+            .uppercased()
         self.environment = environment
         self.callbacks = callbacks
         self.onClose = onClose
@@ -27,8 +31,16 @@ class WebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationDeleg
 
     // MARK: - WKScriptMessageHandler
 
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+    func userContentController(
+        _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
+    ) {
         let host = message.frameInfo.securityOrigin.host
+
+        guard message.frameInfo.isMainFrame else {
+            Log.error("Message rejected from non-main frame: \(host)")
+            return
+        }
+
         guard environment.trustedHosts.contains(host) else {
             Log.error("Message rejected from unauthorized origin: \(host)")
             return
@@ -40,7 +52,10 @@ class WebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationDeleg
         }
 
         do {
-            guard let jsonObject = try JSONSerialization.jsonObject(with: Data(jsonString.utf8), options: []) as? [String: Any] else {
+            guard
+                let jsonObject = try JSONSerialization.jsonObject(
+                    with: Data(jsonString.utf8), options: []) as? [String: Any]
+            else {
                 Log.debug("Failed to convert JSON string to a JSON object")
                 return
             }
@@ -119,7 +134,10 @@ class WebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationDeleg
         self.webView = webView
     }
 
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+    func webView(
+        _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
         guard let url = navigationAction.request.url else {
             decisionHandler(.cancel)
             return
@@ -127,16 +145,26 @@ class WebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationDeleg
 
         let scheme = url.scheme?.lowercased() ?? ""
         if scheme != "http" && scheme != "https" {
-            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            let safeSchemes: Set<String> = ["tel", "mailto", "sms"]
+            if safeSchemes.contains(scheme) {
+                UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            } else {
+                Log.error("Blocked navigation to unknown scheme: \(scheme)")
+            }
             decisionHandler(.cancel)
             return
         }
 
-        let host = url.host ?? ""
-        guard environment.trustedHosts.contains(host) else {
-            Log.error("Blocked navigation to untrusted host: \(host)")
-            decisionHandler(.cancel)
-            return
+        // Only restrict the main frame — sub-frames (iframes) are controlled by the
+        // trusted main page and may navigate to external hosts for OAuth or content.
+        let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
+        if isMainFrame {
+            let host = url.host ?? ""
+            guard environment.trustedHosts.contains(host) else {
+                Log.error("Blocked navigation to untrusted host: \(host)")
+                decisionHandler(.cancel)
+                return
+            }
         }
 
         decisionHandler(.allow)
@@ -144,10 +172,28 @@ class WebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationDeleg
 
     // MARK: - WKUIDelegate
 
-    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let url = navigationAction.request.url {
-            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+    func webView(
+        _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        guard let url = navigationAction.request.url else { return nil }
+        let scheme = url.scheme?.lowercased() ?? ""
+        let host = url.host ?? ""
+
+        if scheme == "http" || scheme == "https" {
+            guard environment.trustedHosts.contains(host) else {
+                Log.error("Blocked popup to untrusted host: \(host)")
+                return nil
+            }
+        } else {
+            let safeSchemes: Set<String> = ["tel", "mailto", "sms"]
+            guard safeSchemes.contains(scheme) else {
+                Log.error("Blocked popup to unknown scheme: \(scheme)")
+                return nil
+            }
         }
+
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
         return nil
     }
 }

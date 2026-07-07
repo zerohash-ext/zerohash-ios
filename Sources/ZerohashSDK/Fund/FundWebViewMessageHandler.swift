@@ -42,6 +42,16 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
     ) {
         let host = message.frameInfo.securityOrigin.host
 
+        guard message.frameInfo.isMainFrame else {
+            Log.error("[Fund] Message rejected from non-main frame: \(host)")
+            return
+        }
+
+        guard environment.trustedHosts.contains(host) else {
+            Log.error("[Fund] Message rejected from unauthorized origin: \(host)")
+            return
+        }
+
         // Parse body — accept both stringified JSON (sandbox/prod) and raw JS objects (dev).
         let rawObject: [String: Any]
         let jsonString: String
@@ -62,16 +72,6 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
         }
 
         guard let rawType = rawObject["type"] as? String else { return }
-
-        guard message.frameInfo.isMainFrame else {
-            Log.error("[Fund] Message rejected from non-main frame: \(host)")
-            return
-        }
-
-        guard environment.trustedHosts.contains(host) else {
-            Log.error("[Fund] Message rejected from unauthorized origin: \(host)")
-            return
-        }
 
         if rawType.hasPrefix("console.") {
             Task { @MainActor in
@@ -186,11 +186,16 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
             return
         }
 
-        let host = url.host ?? ""
-        guard environment.trustedHosts.contains(host) else {
-            Log.error("[Fund] Blocked navigation to untrusted host: \(host)")
-            decisionHandler(.cancel)
-            return
+        // Only restrict the main frame — sub-frames (iframes) are controlled by the
+        // trusted main page and may navigate to external hosts for OAuth or content.
+        let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
+        if isMainFrame {
+            let host = url.host ?? ""
+            guard environment.trustedHosts.contains(host) else {
+                Log.error("[Fund] Blocked main-frame navigation to untrusted host: \(host)")
+                decisionHandler(.cancel)
+                return
+            }
         }
 
         decisionHandler(.allow)
@@ -243,12 +248,6 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
 
         case "close":
             delegate?.messageHandlerDidReceiveClose(self)
-
-        case "console.log", "console.warn", "console.error":
-            #if DEBUG
-            let msg = jsonObject["message"] as? String ?? "(empty)"
-            print("[Fund] [JS:\(type)] \(msg)")
-            #endif
 
         case "navigate":
             if let data = jsonObject["data"] as? [String: Any],

@@ -135,6 +135,16 @@ class SubViewController: UIViewController, WKNavigationDelegate {
 
     private func loadWebsite() {
         guard let url = URL(string: urlString) else { return }
+        let scheme = url.scheme?.lowercased() ?? ""
+        guard scheme == "https" || scheme == "http" else {
+            Log.error("[SubViewController] Blocked initial load with non-http scheme: \(scheme)")
+            return
+        }
+        let host = url.host ?? ""
+        guard environment.trustedHosts.contains(host) else {
+            Log.error("[SubViewController] Blocked initial load of untrusted host: \(host)")
+            return
+        }
         webView.load(URLRequest(url: url))
     }
 }

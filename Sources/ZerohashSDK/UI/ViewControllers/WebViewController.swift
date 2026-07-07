@@ -77,11 +77,7 @@ class WebViewController: UIViewController {
     }
 
     private func loadWebContent() {
-        let baseURL = environment.baseURL
-        let urlString = "\(baseURL)?jwt=\(jwt)"
-
-        guard let url = URL(string: urlString) else { return }
-        let request = URLRequest(url: url)
-        webView.load(request)
+        guard let url = URL(string: environment.baseURL) else { return }
+        webView.load(URLRequest(url: url))
     }
 }
