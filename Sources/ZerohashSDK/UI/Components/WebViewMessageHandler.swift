@@ -121,13 +121,20 @@ class WebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationDeleg
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else {
-            decisionHandler(.allow)
+            decisionHandler(.cancel)
             return
         }
 
         let scheme = url.scheme?.lowercased() ?? ""
         if scheme != "http" && scheme != "https" {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            decisionHandler(.cancel)
+            return
+        }
+
+        let host = url.host ?? ""
+        guard environment.trustedHosts.contains(host) else {
+            Log.error("Blocked navigation to untrusted host: \(host)")
             decisionHandler(.cancel)
             return
         }
