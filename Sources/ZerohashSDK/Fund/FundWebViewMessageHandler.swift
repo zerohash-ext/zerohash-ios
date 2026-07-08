@@ -66,7 +66,7 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
             jsonString = (try? String(data: JSONSerialization.data(withJSONObject: bodyDict), encoding: .utf8)) ?? "{}"
         } else {
             #if DEBUG
-            print("[Fund] ⚠️ Unrecognized message body type from '\(host)': \(type(of: message.body))")
+            print("[Fund] Unrecognized message body type from '\(host)': \(type(of: message.body))")
             #endif
             return
         }
@@ -122,25 +122,25 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         self.webView = webView
         #if DEBUG
-        print("[Fund] ✅ Page finished loading: \(webView.url?.host ?? "nil")")
+        print("[Fund] Page finished loading: \(webView.url?.host ?? "nil")")
         #endif
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         #if DEBUG
-        print("[Fund] 🔄 Started loading: \(webView.url?.host ?? "nil")")
+        print("[Fund] Started loading: \(webView.url?.host ?? "nil")")
         #endif
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalLoadWithError error: Error) {
         #if DEBUG
-        print("[Fund] ❌ Failed to load: \(error.localizedDescription) | code: \((error as NSError).code)")
+        print("[Fund] Failed to load: \(error.localizedDescription) | code: \((error as NSError).code)")
         #endif
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         #if DEBUG
-        print("[Fund] ❌ Navigation failed: \(error.localizedDescription) | code: \((error as NSError).code)")
+        print("[Fund] Navigation failed: \(error.localizedDescription) | code: \((error as NSError).code)")
         #endif
     }
 

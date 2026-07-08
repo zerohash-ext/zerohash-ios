@@ -4,20 +4,19 @@
 ![Platform](https://img.shields.io/badge/Platform-iOS%2014%2B-blue.svg)
 ![SPM Compatible](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg)
 
-A Swift SDK for seamless integration with the [zerohash Fund](https://docs.zerohash.com) product.
+Swift SDK for integrating the [zerohash Fund](https://docs.zerohash.com) product into your iOS app.
 
-The SDK exposes the Fund flow that can be presented from your iOS application:
+The SDK exposes one flow you can present from your app:
 
 - **Fund** — account funding / pay-to-settle flow
 
 ## Features
 
-- **Fund flow** — full account-funding experience exposed through a single SDK
-- **Secure WebView bridge** — bidirectional JS ↔ native messaging over a hardened `WKWebView`
-- **Theme Support** — Light, dark, and system theme options to match your app's design
-- **Real-time Event Callbacks** — Typed callbacks for the Fund flow
-- **Multiple Environments** — Sandbox and production environments
-- **Type-Safe** — Full Swift type safety with comprehensive error handling
+- Account funding flow exposed through a single SDK call
+- WebView bridge for JS/native messaging over a hardened `WKWebView`
+- Light, dark, and system theming
+- Typed event callbacks
+- Sandbox and production environments
 
 ## Requirements
 
@@ -71,7 +70,7 @@ Before presenting the Fund flow, you'll need to obtain a JWT token from
 your backend. This token authenticates the end user with the zerohash
 platform.
 
-> 📘 **Note:** For detailed instructions on obtaining JWT tokens, please refer to the [zerohash documentation](https://docs.zerohash.com).
+> For detailed instructions on obtaining JWT tokens, please refer to the [zerohash documentation](https://docs.zerohash.com).
 
 ## Usage
 
@@ -99,9 +98,9 @@ class FundViewController: UIViewController {
             },
             onFund: { fund in
                 if fund.success {
-                    print("✅ Deposit processed — status: \(fund.status ?? "unknown")")
+                    print("Deposit processed — status: \(fund.status ?? "unknown")")
                 } else {
-                    print("⏳ Deposit status: \(fund.status ?? "unknown")")
+                    print("Deposit status: \(fund.status ?? "unknown")")
                 }
             }
         )
