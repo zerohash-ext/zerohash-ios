@@ -1,21 +1,29 @@
+import Foundation
 import UIKit
 import WebKit
-import Foundation
 
 @MainActor
 protocol FundWebViewMessageHandlerDelegate: AnyObject {
     func messageHandlerDidReceiveContentReady(_ handler: FundWebViewMessageHandler)
-    func messageHandler(_ handler: FundWebViewMessageHandler, didReceiveNavigate url: String, mobileTarget: String?)
+    func messageHandler(
+        _ handler: FundWebViewMessageHandler, didReceiveNavigate url: String, mobileTarget: String?)
     func messageHandlerDidReceiveClose(_ handler: FundWebViewMessageHandler)
-    func messageHandlerDidReceiveDeposit(_ handler: FundWebViewMessageHandler, data: [String: Any], jsonString: String)
-    func messageHandler(_ handler: FundWebViewMessageHandler, didReceiveEvent type: String, data: [String: Any], jsonString: String)
-    func messageHandler(_ handler: FundWebViewMessageHandler, didReceiveError data: [String: Any], jsonString: String)
+    func messageHandlerDidReceiveDeposit(
+        _ handler: FundWebViewMessageHandler, data: [String: Any], jsonString: String)
+    func messageHandler(
+        _ handler: FundWebViewMessageHandler, didReceiveEvent type: String, data: [String: Any],
+        jsonString: String)
+    func messageHandler(
+        _ handler: FundWebViewMessageHandler, didReceiveError data: [String: Any],
+        jsonString: String)
 }
 
 /// Bridge contract matches the zerohash mobile web app (`apps/mobile`):
 /// inbound (web→native) `page-ready`, `content-ready`, `navigate`, `close`,
 /// `error`, `event`, `deposit`; outbound (native→web) `jwt`, `config`.
-class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
+class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegate,
+    WKUIDelegate
+{
 
     // MARK: - Properties
 
@@ -42,10 +50,11 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
     ) {
         let host = message.frameInfo.securityOrigin.host
 
-        guard message.frameInfo.isMainFrame else {
-            Log.error("[Fund] Message rejected from non-main frame: \(host)")
-            return
-        }
+        // The Fund UI runs inside a trusted CDN iframe (iframe-based SDK), so the
+        // navigation bridge legitimately posts from a sub-frame. The origin
+        // allow-list below is the real security boundary — `frameInfo.securityOrigin`
+        // is set by WebKit and cannot be spoofed by page JS — so we authorize by
+        // origin rather than requiring the main frame (which broke redirect/oauth links).
 
         guard environment.trustedHosts.contains(host) else {
             Log.error("[Fund] Message rejected from unauthorized origin: \(host)")
@@ -57,16 +66,22 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
         let jsonString: String
 
         if let bodyString = message.body as? String,
-           let parsed = try? JSONSerialization.jsonObject(with: Data(bodyString.utf8)) as? [String: Any]
+            let parsed = try? JSONSerialization.jsonObject(with: Data(bodyString.utf8))
+                as? [String: Any]
         {
             rawObject = parsed
             jsonString = bodyString
         } else if let bodyDict = message.body as? [String: Any] {
             rawObject = bodyDict
-            jsonString = (try? String(data: JSONSerialization.data(withJSONObject: bodyDict), encoding: .utf8)) ?? "{}"
+            jsonString =
+                (try? String(
+                    data: JSONSerialization.data(withJSONObject: bodyDict), encoding: .utf8))
+                ?? "{}"
         } else {
             #if DEBUG
-            print("[Fund] Unrecognized message body type from '\(host)': \(type(of: message.body))")
+                print(
+                    "[Fund] Unrecognized message body type from '\(host)': \(type(of: message.body))"
+                )
             #endif
             return
         }
@@ -77,7 +92,7 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
             Task { @MainActor in
                 let msg = rawObject["message"] as? String ?? "(empty)"
                 #if DEBUG
-                print("[Fund] [JS:\(rawType)] \(msg)")
+                    print("[Fund] [JS:\(rawType)] \(msg)")
                 #endif
             }
             return
@@ -96,6 +111,21 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
 
     private func sendConfig() {
         sendMessageToWeb(type: "config", data: ["theme": theme.toWebValue])
+    }
+
+    func sendOAuthCancelled() {
+        sendMessageToWeb(type: "oauth-error", data: ["success": false, "error": "User cancelled"])
+    }
+
+    /// Relays a completed OAuth connection to the web SDK. `waitForConnectionId`
+    /// resolves with `data.connectionId`. Matches the zerohash-android contract.
+    func sendOAuthSuccess(connectionId: String) {
+        sendMessageToWeb(type: "oauth-success", data: ["success": true, "connectionId": connectionId])
+    }
+
+    /// Relays an OAuth failure (provider error / session failure) to the web SDK.
+    func sendOAuthError(_ error: String) {
+        sendMessageToWeb(type: "oauth-error", data: ["success": false, "error": error])
     }
 
     private func sendMessageToWeb(type: String, data: [String: Any]) {
@@ -122,25 +152,29 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         self.webView = webView
         #if DEBUG
-        print("[Fund] Page finished loading: \(webView.url?.host ?? "nil")")
+            print("[Fund] Page finished loading: \(webView.url?.host ?? "nil")")
         #endif
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         #if DEBUG
-        print("[Fund] Started loading: \(webView.url?.host ?? "nil")")
+            print("[Fund] Started loading: \(webView.url?.host ?? "nil")")
         #endif
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalLoadWithError error: Error) {
         #if DEBUG
-        print("[Fund] Failed to load: \(error.localizedDescription) | code: \((error as NSError).code)")
+            print(
+                "[Fund] Failed to load: \(error.localizedDescription) | code: \((error as NSError).code)"
+            )
         #endif
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         #if DEBUG
-        print("[Fund] Navigation failed: \(error.localizedDescription) | code: \((error as NSError).code)")
+            print(
+                "[Fund] Navigation failed: \(error.localizedDescription) | code: \((error as NSError).code)"
+            )
         #endif
     }
 
@@ -150,16 +184,17 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
         #if DEBUG
-        // Sandbox uses internally-signed certificates that iOS simulators don't trust.
-        // Accept them for known sandbox hosts in debug builds only — never compiled into release.
-        let sandboxHosts = Environment.sandbox.trustedHosts
-        if sandboxHosts.contains(challenge.protectionSpace.host),
-           challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-           let serverTrust = challenge.protectionSpace.serverTrust
-        {
-            completionHandler(.useCredential, URLCredential(trust: serverTrust))
-            return
-        }
+            // Sandbox uses internally-signed certificates that iOS simulators don't trust.
+            // Accept them for known sandbox hosts in debug builds only — never compiled into release.
+            let sandboxHosts = Environment.sandbox.trustedHosts
+            if sandboxHosts.contains(challenge.protectionSpace.host),
+                challenge.protectionSpace.authenticationMethod
+                    == NSURLAuthenticationMethodServerTrust,
+                let serverTrust = challenge.protectionSpace.serverTrust
+            {
+                completionHandler(.useCredential, URLCredential(trust: serverTrust))
+                return
+            }
         #endif
         completionHandler(.performDefaultHandling, nil)
     }
@@ -251,7 +286,7 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
 
         case "navigate":
             if let data = jsonObject["data"] as? [String: Any],
-               let url = data["url"] as? String
+                let url = data["url"] as? String
             {
                 let mobileTarget = data["mobileTarget"] as? String
                 delegate?.messageHandler(self, didReceiveNavigate: url, mobileTarget: mobileTarget)
@@ -266,11 +301,13 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
             // `eventType` (the `data` object spreads `...event.data`).
             let data = jsonObject["data"] as? [String: Any] ?? [:]
             let eventType = data["eventType"] as? String ?? data["type"] as? String ?? "unknown"
-            delegate?.messageHandler(self, didReceiveEvent: eventType, data: data, jsonString: jsonString)
+            delegate?.messageHandler(
+                self, didReceiveEvent: eventType, data: data, jsonString: jsonString)
 
         default:
             let data = jsonObject["data"] as? [String: Any] ?? [:]
-            delegate?.messageHandler(self, didReceiveEvent: type, data: data, jsonString: jsonString)
+            delegate?.messageHandler(
+                self, didReceiveEvent: type, data: data, jsonString: jsonString)
         }
     }
 }

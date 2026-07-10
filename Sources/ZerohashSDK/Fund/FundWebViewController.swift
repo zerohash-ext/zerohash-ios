@@ -1,6 +1,6 @@
+import AuthenticationServices
 import UIKit
 import WebKit
-import SafariServices
 
 class FundWebViewController: UIViewController,
     WebViewLoadingManagerDelegate,
@@ -19,6 +19,12 @@ class FundWebViewController: UIViewController,
     private var loadingManager: WebViewLoadingManager!
     private var messageHandler: FundWebViewMessageHandler!
     private var didFireClose = false
+
+    /// Fixed redirect scheme connection-service uses for mobile OAuth callbacks
+    /// (`connectsdk-oauth://callback?connectionId=<uuid>`) — matches zerohash-android.
+    private static let oauthCallbackScheme = "connectsdk-oauth"
+    /// Held so the session isn't deallocated mid-flow.
+    private var authSession: ASWebAuthenticationSession?
 
     // MARK: - Initialization
 
@@ -78,7 +84,9 @@ class FundWebViewController: UIViewController,
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
 
-        if theme == .system && traitCollection.userInterfaceStyle != previousTraitCollection?.userInterfaceStyle {
+        if theme == .system
+            && traitCollection.userInterfaceStyle != previousTraitCollection?.userInterfaceStyle
+        {
             let isDark = theme.shouldUseDarkMode(in: traitCollection)
 
             if isDark {
@@ -111,77 +119,77 @@ class FundWebViewController: UIViewController,
         let userContentController = WKUserContentController()
 
         #if DEBUG
-        let consoleBridge = WKUserScript(
-            source: """
-            (function() {
-                function relay(level, args) {
-                    var msg = Array.prototype.slice.call(args).map(function(a) {
-                        return typeof a === 'object' ? JSON.stringify(a) : String(a);
-                    }).join(' ');
-                    if (window.webkit && window.webkit.messageHandlers.NativeIOS) {
-                        window.webkit.messageHandlers.NativeIOS.postMessage(
-                            JSON.stringify({ type: 'console.' + level, message: msg })
-                        );
-                    }
-                }
-                ['log','warn','error'].forEach(function(lvl) {
-                    var orig = console[lvl];
-                    console[lvl] = function() { orig.apply(console, arguments); relay(lvl, arguments); };
-                });
-            })();
-            """,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: true
-        )
-        userContentController.addUserScript(consoleBridge)
+            let consoleBridge = WKUserScript(
+                source: """
+                    (function() {
+                        function relay(level, args) {
+                            var msg = Array.prototype.slice.call(args).map(function(a) {
+                                return typeof a === 'object' ? JSON.stringify(a) : String(a);
+                            }).join(' ');
+                            if (window.webkit && window.webkit.messageHandlers.NativeIOS) {
+                                window.webkit.messageHandlers.NativeIOS.postMessage(
+                                    JSON.stringify({ type: 'console.' + level, message: msg })
+                                );
+                            }
+                        }
+                        ['log','warn','error'].forEach(function(lvl) {
+                            var orig = console[lvl];
+                            console[lvl] = function() { orig.apply(console, arguments); relay(lvl, arguments); };
+                        });
+                    })();
+                    """,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+            userContentController.addUserScript(consoleBridge)
 
-        let networkBridge = WKUserScript(
-            source: """
-            (function() {
-                function stripQuery(url) {
-                    var q = url.indexOf('?');
-                    return q === -1 ? url : url.substring(0, q);
-                }
-                var _fetch = window.fetch;
-                window.fetch = function(input, init) {
-                    var url = typeof input === 'string' ? input : (input && input.url) || '';
-                    var method = (init && init.method) || (input && input.method) || 'GET';
-                    var safe = stripQuery(url);
-                    console.log('[Network] ' + method.toUpperCase() + ' ' + safe);
-                    return _fetch.apply(this, arguments).then(function(response) {
-                        console.log('[Network] ' + response.status + ' ' + method.toUpperCase() + ' ' + safe);
-                        return response;
-                    }).catch(function(err) {
-                        console.error('[Network] FAILED ' + method.toUpperCase() + ' ' + safe + ' — ' + err);
-                        throw err;
-                    });
-                };
+            let networkBridge = WKUserScript(
+                source: """
+                    (function() {
+                        function stripQuery(url) {
+                            var q = url.indexOf('?');
+                            return q === -1 ? url : url.substring(0, q);
+                        }
+                        var _fetch = window.fetch;
+                        window.fetch = function(input, init) {
+                            var url = typeof input === 'string' ? input : (input && input.url) || '';
+                            var method = (init && init.method) || (input && input.method) || 'GET';
+                            var safe = stripQuery(url);
+                            console.log('[Network] ' + method.toUpperCase() + ' ' + safe);
+                            return _fetch.apply(this, arguments).then(function(response) {
+                                console.log('[Network] ' + response.status + ' ' + method.toUpperCase() + ' ' + safe);
+                                return response;
+                            }).catch(function(err) {
+                                console.error('[Network] FAILED ' + method.toUpperCase() + ' ' + safe + ' — ' + err);
+                                throw err;
+                            });
+                        };
 
-                var _open = XMLHttpRequest.prototype.open;
-                var _send = XMLHttpRequest.prototype.send;
-                XMLHttpRequest.prototype.open = function(method, url) {
-                    this._zhMethod = method;
-                    this._zhUrl = url;
-                    return _open.apply(this, arguments);
-                };
-                XMLHttpRequest.prototype.send = function() {
-                    var method = this._zhMethod || 'XHR';
-                    var safe = stripQuery(this._zhUrl || '');
-                    console.log('[Network] ' + method.toUpperCase() + ' ' + safe);
-                    this.addEventListener('load', function() {
-                        console.log('[Network] ' + this.status + ' ' + method.toUpperCase() + ' ' + safe);
-                    });
-                    this.addEventListener('error', function() {
-                        console.error('[Network] FAILED ' + method.toUpperCase() + ' ' + safe);
-                    });
-                    return _send.apply(this, arguments);
-                };
-            })();
-            """,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: true
-        )
-        userContentController.addUserScript(networkBridge)
+                        var _open = XMLHttpRequest.prototype.open;
+                        var _send = XMLHttpRequest.prototype.send;
+                        XMLHttpRequest.prototype.open = function(method, url) {
+                            this._zhMethod = method;
+                            this._zhUrl = url;
+                            return _open.apply(this, arguments);
+                        };
+                        XMLHttpRequest.prototype.send = function() {
+                            var method = this._zhMethod || 'XHR';
+                            var safe = stripQuery(this._zhUrl || '');
+                            console.log('[Network] ' + method.toUpperCase() + ' ' + safe);
+                            this.addEventListener('load', function() {
+                                console.log('[Network] ' + this.status + ' ' + method.toUpperCase() + ' ' + safe);
+                            });
+                            this.addEventListener('error', function() {
+                                console.error('[Network] FAILED ' + method.toUpperCase() + ' ' + safe);
+                            });
+                            return _send.apply(this, arguments);
+                        };
+                    })();
+                    """,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+            userContentController.addUserScript(networkBridge)
         #endif
 
         let config = WKWebViewConfiguration()
@@ -266,23 +274,18 @@ class FundWebViewController: UIViewController,
                 Log.error("[Fund] Blocked oauth navigation to non-https URL")
                 return
             }
-            let safariVC = SFSafariViewController(url: parsedURL)
-            safariVC.delegate = self
-            safariVC.preferredControlTintColor = .systemBlue
-            present(safariVC, animated: true)
+            startOAuthSession(url: parsedURL)
 
         default:
+            // `external` hands the URL to the system browser (out-of-process, no
+            // bridge/JWT access), so the destination is intentionally a third-party
+            // host (Robinhood, Gemini, etc.). Gate on scheme only — a trusted-host
+            // allow-list here would defeat the purpose of external navigation and
+            // block every redirect integration.
             let safeSchemes: Set<String> = ["https", "http", "tel", "mailto", "sms"]
             guard safeSchemes.contains(scheme) else {
                 Log.error("[Fund] Blocked external navigation to unknown scheme: \(scheme)")
                 return
-            }
-            if scheme == "https" || scheme == "http" {
-                let host = parsedURL.host ?? ""
-                guard environment.trustedHosts.contains(host) else {
-                    Log.error("[Fund] Blocked external navigation to untrusted host: \(host)")
-                    return
-                }
             }
             UIApplication.shared.open(parsedURL, options: [:], completionHandler: nil)
         }
@@ -345,8 +348,70 @@ class FundWebViewController: UIViewController,
     }
 }
 
-// MARK: - SFSafariViewControllerDelegate
+// MARK: - OAuth (ASWebAuthenticationSession)
 
-extension FundWebViewController: @preconcurrency SFSafariViewControllerDelegate {
-    func safariViewControllerDidFinish(_ controller: SFSafariViewController) {}
+extension FundWebViewController: @preconcurrency ASWebAuthenticationPresentationContextProviding {
+
+    /// Runs the OAuth flow. connection-service redirects to
+    /// `connectsdk-oauth://callback?connectionId=<uuid>` on success; the session
+    /// intercepts that scheme (no Info.plist registration needed), auto-dismisses,
+    /// and we relay the outcome to the web SDK as `oauth-success` / `oauth-error`.
+    /// `SFSafariViewController` could never capture this redirect — hence the flow
+    /// used to hang and a manual close read as a cancel.
+    fileprivate func startOAuthSession(url: URL) {
+        let session = ASWebAuthenticationSession(
+            url: url,
+            callbackURLScheme: FundWebViewController.oauthCallbackScheme
+        ) { [weak self] callbackURL, error in
+            Task { @MainActor in self?.finishOAuth(callbackURL: callbackURL, error: error) }
+        }
+        session.presentationContextProvider = self
+        // Share the Safari cookie jar so an existing provider login is reused
+        // (matches the previous SFSafariViewController behaviour).
+        session.prefersEphemeralWebBrowserSession = false
+        authSession = session
+        if !session.start() {
+            Log.error("[Fund] Failed to start OAuth session")
+            messageHandler.sendOAuthCancelled()
+        }
+    }
+
+    private func finishOAuth(callbackURL: URL?, error: Error?) {
+        authSession = nil
+        if let error = error {
+            // .canceledLogin == user dismissed the auth sheet.
+            if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin {
+                messageHandler.sendOAuthCancelled()
+            } else {
+                Log.error("[Fund] OAuth session failed: \(error.localizedDescription)")
+                messageHandler.sendOAuthError("oauth_error")
+            }
+            return
+        }
+        guard let callbackURL = callbackURL,
+            let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)
+        else {
+            messageHandler.sendOAuthCancelled()
+            return
+        }
+        let items = components.queryItems ?? []
+        if let providerError = items.first(where: { $0.name == "error" })?.value,
+            !providerError.isEmpty
+        {
+            messageHandler.sendOAuthError(providerError)
+            return
+        }
+        // Only a well-formed UUID connectionId is accepted (mirrors zerohash-android).
+        if let connectionId = items.first(where: { $0.name == "connectionId" })?.value,
+            UUID(uuidString: connectionId) != nil
+        {
+            messageHandler.sendOAuthSuccess(connectionId: connectionId)
+        } else {
+            messageHandler.sendOAuthCancelled()
+        }
+    }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        view.window ?? ASPresentationAnchor()
+    }
 }
