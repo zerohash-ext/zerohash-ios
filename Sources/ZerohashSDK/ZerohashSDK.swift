@@ -26,3 +26,9 @@ public class ZerohashSDK {
         )
     }
 }
+
+// MARK: - SDK Version
+
+extension ZerohashSDK {
+    public static let version: String = "0.1.0"
+}

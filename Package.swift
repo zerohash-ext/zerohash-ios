@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "ZerohashSDK",
     platforms: [
-        .iOS(.v14)
+        .iOS(.v17)
     ],
     products: [
         .library(
@@ -17,7 +17,20 @@ let package = Package(
     targets: [
         .target(
             name: "ZerohashSDK",
-            dependencies: []
+            dependencies: [],
+            resources: [
+                .process("Resources/Media.xcassets"),
+                .process("Automation/dom-helpers.js"),
+                .process("Platforms/Coinbase/auth-status.js"),
+                .process("Platforms/Coinbase/auth-detect-unsupported-2fa.js"),
+                .process("Platforms/Coinbase/auth-signup.js"),
+                .process("Platforms/Coinbase/auth-hide-social.js"),
+                .process("Platforms/Coinbase/auth-choose-2fa-method.js"),
+                .process("Platforms/Coinbase/get-deposit-address.js"),
+                .process("Platforms/Coinbase/get-balance.js"),
+                .process("Platforms/Coinbase/coinbase-balance-queries.js"),
+                .process("Platforms/Coinbase/withdraw.js"),
+            ]
         ),
         .testTarget(
             name: "ZerohashSDKTests",

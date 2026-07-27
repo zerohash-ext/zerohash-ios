@@ -1,7 +1,7 @@
 # zerohash-ios
 
 ![Swift](https://img.shields.io/badge/Swift-6.0%2B-orange.svg)
-![Platform](https://img.shields.io/badge/Platform-iOS%2014%2B-blue.svg)
+![Platform](https://img.shields.io/badge/Platform-iOS%2017%2B-blue.svg)
 ![SPM Compatible](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg)
 
 Swift SDK for integrating the [zerohash Fund](https://docs.zerohash.com) product into your iOS app.
@@ -20,7 +20,7 @@ The SDK exposes one flow you can present from your app:
 
 ## Requirements
 
-- iOS 14+
+- iOS 17+
 - Swift 6.0+
 - Xcode 15.3+
 

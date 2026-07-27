@@ -20,6 +20,13 @@ class FundWebViewController: UIViewController,
     private var messageHandler: FundWebViewMessageHandler!
     private var didFireClose = false
 
+    /// Shared process pool + persistent data store so a Coinbase login session
+    /// carries across the Fund WebView, the offscreen `auth.status` runner, and
+    /// the modal login flow. Mirrors connect-ios `SharedWebViewConfiguration`.
+    private let sharedConfig = SharedWebViewConfiguration()
+    private var replySink: PostMessageReplySink!
+    private var automationRouter: AutomationWebViewMessageRouter!
+
     /// Fixed redirect scheme connection-service uses for mobile OAuth callbacks
     /// (`connectsdk-oauth://callback?connectionId=<uuid>`) — matches zerohash-android.
     private static let oauthCallbackScheme = "connectsdk-oauth"
@@ -196,7 +203,10 @@ class FundWebViewController: UIViewController,
         config.userContentController = userContentController
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
         config.allowsInlineMediaPlayback = true
-        config.websiteDataStore = .nonPersistent()
+        // Shared persistent store (not `.nonPersistent()`) so the Coinbase login
+        // session is reused by the automation runners.
+        config.processPool = sharedConfig.processPool
+        config.websiteDataStore = sharedConfig.dataStore
 
         webView = WKWebView(frame: view.bounds, configuration: config)
         webView.translatesAutoresizingMaskIntoConstraints = false
@@ -223,6 +233,26 @@ class FundWebViewController: UIViewController,
 
         webView.navigationDelegate = messageHandler
         webView.uiDelegate = messageHandler
+
+        // ZeroAuth scraping bridge: replies post back through the Fund WebView;
+        // operations run in offscreen/modal WebViews sharing `sharedConfig`.
+        replySink = PostMessageReplySink(webView: webView)
+        automationRouter = AutomationWebViewMessageRouter(
+            registry: PlatformRegistry.shared,
+            sink: replySink,
+            executionContextFactory: { [weak self] requestId in
+                guard let self = self else {
+                    fatalError("ExecutionContext factory invoked without owning controller")
+                }
+                return ExecutionContextImpl(
+                    host: self,
+                    shared: self.sharedConfig,
+                    currentRequestId: requestId,
+                    eventEmitter: self.automationRouter,
+                    theme: self.theme
+                )
+            }
+        )
 
         view.addSubview(webView)
 
@@ -327,6 +357,13 @@ class FundWebViewController: UIViewController,
     ) {
         let event = ErrorEvent(from: data, jsonString: jsonString)
         callbacks.onError?(event)
+    }
+
+    func messageHandler(
+        _ handler: FundWebViewMessageHandler,
+        didReceiveAutomationRequest request: ZeroAuthRequest
+    ) {
+        Task { @MainActor in await automationRouter.dispatch(request) }
     }
 
     // MARK: - WebViewLoadingManagerDelegate

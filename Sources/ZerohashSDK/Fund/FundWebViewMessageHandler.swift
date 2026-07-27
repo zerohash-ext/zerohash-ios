@@ -16,6 +16,10 @@ protocol FundWebViewMessageHandlerDelegate: AnyObject {
     func messageHandler(
         _ handler: FundWebViewMessageHandler, didReceiveError data: [String: Any],
         jsonString: String)
+    /// A ZeroAuth scraping envelope (`role: "zeroauth-host"`) arrived on the same
+    /// `NativeIOS` channel. Routed to the automation bridge rather than the Fund flow.
+    func messageHandler(
+        _ handler: FundWebViewMessageHandler, didReceiveAutomationRequest request: ZeroAuthRequest)
 }
 
 /// Bridge contract matches the zerohash mobile web app (`apps/mobile`):
@@ -83,6 +87,25 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
                     "[Fund] Unrecognized message body type from '\(host)': \(type(of: message.body))"
                 )
             #endif
+            return
+        }
+
+        // ZeroAuth scraping envelopes ride the same channel, discriminated by
+        // `role: "zeroauth-host"` (matches zerohash-android's dispatchMessage and
+        // connect-ios's NativeIOSMessageHandler). They carry `operation`, not `type`.
+        if MessageBodyDecoder.isAutomationWebViewRequest(rawObject) {
+            let request: ZeroAuthRequest
+            if let decoded = try? JSONDecoder().decode(ZeroAuthRequest.self, from: Data(jsonString.utf8)) {
+                request = decoded
+            } else {
+                // Malformed envelope: route the synthetic probe so the automation
+                // router emits a structured reply instead of silently dropping it.
+                Log.error("[Fund] Automation envelope failed to decode from '\(host)'; routing invalidEnvelopeProbe")
+                request = .invalidEnvelopeProbe()
+            }
+            Task { @MainActor in
+                self.delegate?.messageHandler(self, didReceiveAutomationRequest: request)
+            }
             return
         }
 
@@ -309,5 +332,17 @@ class FundWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationD
             delegate?.messageHandler(
                 self, didReceiveEvent: type, data: data, jsonString: jsonString)
         }
+    }
+}
+
+private extension ZeroAuthRequest {
+    /// Synthetic request used to surface "invalid envelope" replies through the
+    /// automation router when the body has `role=zeroauth-host` but doesn't decode.
+    /// The router will reject with `.platformNotRegistered("?")` because the
+    /// platform field is empty — but `?` as a sentinel id keeps any pending
+    /// JS-side promise from leaking. Replaced with a dedicated path in a
+    /// future revision.
+    static func invalidEnvelopeProbe() -> ZeroAuthRequest {
+        ZeroAuthRequest(id: "?", role: WireRole.host, platform: "?", operation: "?")
     }
 }
