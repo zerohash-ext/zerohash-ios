@@ -1,0 +1,57 @@
+# XcodeGen spec for the Fund gating e2e harness (AUTH-3839). XCUITest can't
+# drive a bare SPM library, so this generates a host app + UI-test bundle.
+# Generate (gitignored): brew install xcodegen && xcodegen generate --spec E2E/project.yml
+name: ZerohashE2E
+options:
+  bundleIdPrefix: com.zerohash.e2e
+  deploymentTarget:
+    iOS: '17.0'
+  createIntermediateGroups: true
+
+packages:
+  ZerohashSDK:
+    path: ..
+
+targets:
+  HostApp:
+    type: application
+    platform: iOS
+    sources:
+      - HostApp
+    dependencies:
+      - package: ZerohashSDK
+        product: ZerohashSDK
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.zerohash.e2e.host
+        GENERATE_INFOPLIST_FILE: true
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        TARGETED_DEVICE_FAMILY: '1'
+        CODE_SIGNING_ALLOWED: 'NO'
+        SWIFT_VERSION: '6.0'
+
+  FundGatingE2EUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: HostApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.zerohash.e2e.uitests
+        GENERATE_INFOPLIST_FILE: true
+        CODE_SIGNING_ALLOWED: 'NO'
+        SWIFT_VERSION: '6.0'
+        TEST_TARGET_NAME: HostApp
+
+schemes:
+  FundGatingE2E:
+    build:
+      targets:
+        HostApp: all
+        FundGatingE2EUITests: [test]
+    test:
+      targets:
+        - FundGatingE2EUITests
