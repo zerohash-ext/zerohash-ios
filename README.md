@@ -4,15 +4,16 @@
 ![Platform](https://img.shields.io/badge/Platform-iOS%2017%2B-blue.svg)
 ![SPM Compatible](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg)
 
-Swift SDK for integrating the [zerohash Fund](https://docs.zerohash.com) product into your iOS app.
+Swift SDK for integrating [zerohash](https://docs.zerohash.com) products into your iOS app.
 
-The SDK exposes one flow you can present from your app:
+The SDK exposes two flows you can present from your app:
 
 - **Fund** — account funding / pay-to-settle flow
+- **Crypto Withdrawals** — withdraw crypto to an external address
 
 ## Features
 
-- Account funding flow exposed through a single SDK call
+- Each flow exposed through a single SDK call
 - WebView bridge for JS/native messaging over a hardened `WKWebView`
 - Light, dark, and system theming
 - Typed event callbacks
@@ -66,9 +67,9 @@ import ZerohashSDK
 
 ### Obtain a JWT Token
 
-Before presenting the Fund flow, you'll need to obtain a JWT token from
-your backend. This token authenticates the end user with the zerohash
-platform.
+Before presenting a flow, you'll need to obtain a JWT token from your
+backend. This token authenticates the end user with the zerohash platform
+and carries the permissions for the flow you're presenting.
 
 > For detailed instructions on obtaining JWT tokens, please refer to the [zerohash documentation](https://docs.zerohash.com).
 
@@ -117,6 +118,46 @@ class FundViewController: UIViewController {
 }
 ```
 
+### Crypto Withdrawals
+
+The Crypto Withdrawals app walks the end user through withdrawing a crypto
+asset to an external address. Use `onWithdrawal` to react to the completed
+withdrawal.
+
+```swift
+import UIKit
+import ZerohashSDK
+
+class WithdrawalsViewController: UIViewController {
+
+    private var withdrawalsSession: ZerohashCryptoWithdrawalsSession?
+
+    @IBAction func startWithdrawalTapped(_ sender: UIButton) {
+        let callbacks = CryptoWithdrawalsCallbacks(
+            onClose: { print("Crypto Withdrawals closed") },
+            onWithdrawal: { withdrawal in
+                print("Withdrawal submitted: \(withdrawal.withdrawalRequestId ?? "unknown")")
+            },
+            onError: { error in
+                print("Crypto Withdrawals error \(error.code): \(error.message)")
+            },
+            onEvent: { event in
+                print("Crypto Withdrawals event: \(event.type)")
+            }
+        )
+
+        withdrawalsSession = ZerohashSDK.configureCryptoWithdrawals(
+            jwt: "your-jwt-token",
+            environment: .production,
+            theme: .system,
+            callbacks: callbacks
+        )
+
+        withdrawalsSession?.present(from: self)
+    }
+}
+```
+
 ## API Reference
 
 ### ZerohashSDK
@@ -137,11 +178,27 @@ Configures a Fund session that can be presented later. Returns a
 | `theme` | `Theme` | `.system` | `.light`, `.dark`, or `.system` |
 | `callbacks` | `FundCallbacks` | empty | Event callbacks for the Fund flow |
 
-### ZerohashFundSession
+#### `configureCryptoWithdrawals(jwt:environment:theme:callbacks:)`
+
+Configures a Crypto Withdrawals session that can be presented later. Returns a
+`ZerohashCryptoWithdrawalsSession`.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `jwt` | `String` | — | JWT token authenticating the end user |
+| `environment` | `Environment` | `.production` | `.sandbox` or `.production` |
+| `theme` | `Theme` | `.system` | `.light`, `.dark`, or `.system` |
+| `callbacks` | `CryptoWithdrawalsCallbacks` | empty | Event callbacks for the Crypto Withdrawals flow |
+
+### ZerohashFundSession / ZerohashCryptoWithdrawalsSession
+
+Both session types expose the same lifecycle:
 
 #### `present(from:)`
 
-Presents the Fund UI modally from the specified view controller.
+Presents the flow's UI modally from the specified view controller.
 
 - **Parameter** `viewController: UIViewController` — the view controller to present from
 
@@ -185,6 +242,17 @@ struct FundCallbacks {
 }
 ```
 
+#### CryptoWithdrawalsCallbacks
+
+```swift
+struct CryptoWithdrawalsCallbacks {
+    var onClose: (() -> Void)?
+    var onWithdrawal: ((CryptoWithdrawalsEvent) -> Void)?
+    var onError: ((ErrorEvent) -> Void)?
+    var onEvent: ((GenericEvent) -> Void)?
+}
+```
+
 ## Callbacks and Events
 
 ### onFund
@@ -196,6 +264,17 @@ fund.success      // Bool    — true when the deposit was processed
 fund.status       // String? — current deposit status
 fund.data         // [String: Any] — raw event payload
 fund.jsonString   // String  — raw JSON string
+```
+
+### onWithdrawal
+
+Called when the Crypto Withdrawals flow submits a withdrawal.
+
+```swift
+withdrawal.withdrawalRequestId       // String? — withdrawal request ID returned by the API
+withdrawal.data                      // [String: Any] — raw event payload
+withdrawal.jsonString                // String  — raw JSON string
+withdrawal.getString("key")          // String?
 ```
 
 ### onError
@@ -233,14 +312,14 @@ Called when the session is closed by the user or programmatically via
 
 ### Setting Theme
 
-The SDK supports three theme options:
+Both flows support the same three theme options:
 
 ```swift
 // Light theme
 ZerohashSDK.configureFund(jwt: token, theme: .light)
 
 // Dark theme
-ZerohashSDK.configureFund(jwt: token, theme: .dark)
+ZerohashSDK.configureCryptoWithdrawals(jwt: token, theme: .dark)
 
 // System theme (default) — matches device settings
 ZerohashSDK.configureFund(jwt: token, theme: .system)

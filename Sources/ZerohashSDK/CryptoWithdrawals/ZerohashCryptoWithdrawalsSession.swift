@@ -1,16 +1,20 @@
 import UIKit
 
 @MainActor
-public class ZerohashFundSession {
+public class ZerohashCryptoWithdrawalsSession {
 
     // MARK: - Properties
 
     private let jwt: String
     private let environment: Environment
     private let theme: Theme
-    private let callbacks: FundCallbacks
+    private let callbacks: CryptoWithdrawalsCallbacks
     private var webViewController: IntegrationsWebViewController?
     private var isPresented: Bool = false
+
+    /// Hash route served by the mobile web app (`createHashRouter`, base `/mobile`).
+    /// The route embeds the crypto-withdrawals web component + iframe.
+    private static let appIdentifier = "crypto-withdrawals"
 
     // MARK: - Initialization
 
@@ -18,7 +22,7 @@ public class ZerohashFundSession {
         jwt: String,
         environment: Environment = .production,
         theme: Theme = .system,
-        callbacks: FundCallbacks = FundCallbacks()
+        callbacks: CryptoWithdrawalsCallbacks = CryptoWithdrawalsCallbacks()
     ) {
         self.jwt = jwt
         self.environment = environment
@@ -28,25 +32,23 @@ public class ZerohashFundSession {
 
     // MARK: - Public API
 
-    /// Presents the Fund UI from the specified view controller
+    /// Presents the crypto-withdrawals UI from the specified view controller
     public func present(from viewController: UIViewController) {
         guard !isPresented else { return }
         guard !jwt.isEmpty else { return }
 
+        let callbacks = self.callbacks
         let webVC = IntegrationsWebViewController(
-            appIdentifier: "fund",
+            appIdentifier: Self.appIdentifier,
             jwt: jwt,
             environment: environment,
             theme: theme,
             callbacks: IntegrationsWebViewCallbacks(
                 onClose: callbacks.onClose,
-                // Fund completes a deposit; the bridge hands back the raw payload
-                // and this session types it as a `FundEvent`.
-                onCompleted: { [callbacks] data, jsonString in
-                    callbacks.onFund?(
-                        FundEvent(
-                            success: true,
-                            status: data["status"] as? String ?? "completed",
+                onCompleted: { data, jsonString in
+                    callbacks.onWithdrawal?(
+                        CryptoWithdrawalsEvent(
+                            withdrawalRequestId: data["withdrawalRequestId"] as? String,
                             data: data,
                             jsonString: jsonString
                         )
