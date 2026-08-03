@@ -23,7 +23,7 @@ The SDK exposes two flows you can present from your app:
 
 - iOS 17+
 - Swift 6.0+
-- Xcode 15.3+
+- Xcode 16.0+
 
 ## Installation
 
@@ -32,7 +32,7 @@ The SDK exposes two flows you can present from your app:
 #### Using Xcode
 
 1. In Xcode, select **File > Add Package Dependencies...**
-2. Enter the repository URL: `https://github.com/zerohash/zerohash-ios`
+2. Enter the repository URL: `https://github.com/zerohash-ext/zerohash-ios`
 3. Select the version rule you want to use (we recommend up to next major)
 4. Click **Add Package**
 
@@ -42,7 +42,7 @@ Add ZerohashSDK as a dependency in your `Package.swift` file:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/zerohash/zerohash-ios", from: "1.0.0")
+    .package(url: "https://github.com/zerohash-ext/zerohash-ios", from: "1.0.0")
 ]
 ```
 
