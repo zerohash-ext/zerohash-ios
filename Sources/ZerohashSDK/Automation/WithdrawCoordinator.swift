@@ -68,8 +68,17 @@ final class WithdrawCoordinator {
             throw PlatformError.underlying("no active withdraw session")
         }
         do {
-            // Bring the page back on screen (overlay up) before driving it.
-            await resumeScraping(active.handle)
+            // Only present the page when this step has to ACT on it. A poll is a
+            // read, and the host polls a parked id-verification every few seconds —
+            // presenting for each one made Coinbase's risk page flash open and shut
+            // on that cadence. See `ContinueWithdrawPayload.needsPagePresented`.
+            if payload.needsPagePresented {
+                await resumeScraping(active.handle)
+            } else {
+                // Still give this leg a fresh wall-clock budget, which resumeScraping
+                // would otherwise have done.
+                active.handle.restartTimeout()
+            }
             let state = try await platform.continueWithdraw(session: active.handle, payload: payload)
             if state.endsSession {
                 await active.handle.dismiss()
@@ -91,12 +100,18 @@ final class WithdrawCoordinator {
     // MARK: - Visibility choreography (who's on screen at each pause)
 
     /// After a non-terminal step: hand the screen to whoever completes the pause.
-    /// passkey / ID-verification → reveal the live modal (user acts in it);
-    /// otp / processing / rejected → step the modal aside so the host shows its UI.
+    ///
+    /// Every reachable pause currently steps the modal aside so the host shows its
+    /// own UI — `surfacesCoinbase` is `false` for all of them. The reveal branch is
+    /// retained because it is the switch point for letting the user complete
+    /// Coinbase's identity check inside the WebView, which needs camera and
+    /// microphone support the SDK does not yet grant. See
+    /// `WithdrawState.surfacesCoinbase`.
     private func handOff(after state: WithdrawState, _ handle: AutomationSessionHandle) async {
-        // The session is now parked waiting on the user (OTP entry, or a passkey /
-        // ID step completed in the modal). That wait is unbounded, so suspend the
-        // modal's wall-clock timeout; resumeScraping restarts it before the next leg.
+        // The session is now parked waiting on the user — entering an OTP, or
+        // finishing an identity check in the Coinbase app. That wait is unbounded, so
+        // suspend the modal's wall-clock timeout; resumeScraping restarts it before
+        // the next leg.
         handle.pauseTimeout()
         if state.surfacesCoinbase {
             Log.automation.debug("withdraw handOff → reveal page (user acts in modal)")
@@ -111,7 +126,8 @@ final class WithdrawCoordinator {
 
     /// Before driving on `continue`: get the page back, covered by the overlay.
     /// If it was stepped aside, re-present it (the overlay was up, so it stays up);
-    /// otherwise (it was revealed for passkey/ID) re-cover it.
+    /// otherwise — only reachable if `surfacesCoinbase` ever returns true again —
+    /// re-cover it.
     private func resumeScraping(_ handle: AutomationSessionHandle) async {
         // Give this automation leg a fresh wall-clock budget (it was paused while
         // the user acted).
@@ -126,9 +142,14 @@ final class WithdrawCoordinator {
     }
 
     /// `withdraw.cancel`: cancel the open session. Always dismisses the modal and
-    /// clears the slot (cancel ends the session regardless); returns whether the
-    /// platform's "Cancel transfer" was actually found/clicked. Requires an
-    /// active session whose id matches `sessionId`.
+    /// clears the slot (cancel ends the session regardless); returns whatever the
+    /// platform reports for aborting the transfer itself. Requires an active session
+    /// whose id matches `sessionId`.
+    ///
+    /// On Coinbase that return value is always `false` — the SDK deliberately does
+    /// not abort the transfer, because the one screen offering that button is the
+    /// risk screen, which is exactly when the user has been sent to the Coinbase app
+    /// to finish an identity check. See `withdraw.js`'s `cancel` entry point.
     func cancel(platform: any WithdrawFlow, sessionId: String?) async throws -> Bool {
         guard let active, active.id == sessionId else {
             throw PlatformError.underlying("no active withdraw session")
@@ -137,9 +158,10 @@ final class WithdrawCoordinator {
         // and guarantee the modal is dismissed on both success and failure.
         self.active = nil
         do {
-            // Bring the page back on screen so the risk-step "Cancel transfer"
-            // button is visible/queryable, then cancel and tear down.
-            await resumeScraping(active.handle)
+            // Deliberately NOT resumeScraping first. That used to re-present the page
+            // so a "Cancel transfer" button would be queryable; nothing clicks it now,
+            // and re-presenting Coinbase's risk screen one line before dismissing it
+            // just flashes it at the user.
             let cancelled = try await platform.cancelWithdraw(session: active.handle)
             await active.handle.dismiss()
             return cancelled

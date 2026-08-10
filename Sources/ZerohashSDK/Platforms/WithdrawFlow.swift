@@ -325,14 +325,28 @@ public extension WithdrawState {
 
     /// True when this (non-terminal) pause is completed by the user IN Coinbase's
     /// own UI — so the modal should be revealed rather than stepped aside for the
-    /// host. Currently only ID-verification: passkey is NOT supported (the JS
-    /// rejects with `passkey_unsupported` instead of producing the passkey state),
-    /// so `awaitingUserActionPasskey` is unreachable and intentionally omitted here.
+    /// host.
+    ///
+    /// ID-verification reveals the page: the user completes Coinbase's identity
+    /// check in place. Coinbase renders that flow itself — the captured screens show
+    /// no third-party frame — and the SDK grants camera and microphone capture for
+    /// Coinbase origins so it can run. The integrating app must carry
+    /// `NSCameraUsageDescription` and `NSMicrophoneUsageDescription`, or iOS
+    /// terminates it when the check asks for the camera.
+    ///
+    /// Everything else steps aside: OTP is relayed through the host's own UI, and
+    /// processing / terminal states are not the user's to act on.
+    ///
+    /// Passkey never reaches here (the JS rejects with `passkey_unsupported`).
+    ///
+    /// Listed exhaustively rather than with `default`, so a new state has to make
+    /// this decision explicitly.
     var surfacesCoinbase: Bool {
         switch self {
         case .awaitingUserActionIdVerification:
             return true
-        default:
+        case .awaitingInputOtp, .awaitingUserActionPasskey, .processing,
+             .submitted, .rejected:
             return false
         }
     }
@@ -350,6 +364,26 @@ extension StartWithdrawPayload {
         guard let payload else { throw DecodeError.missingPayload }
         let data = try JSONEncoder().encode(payload)
         return try JSONDecoder().decode(StartWithdrawPayload.self, from: data)
+    }
+}
+
+public extension ContinueWithdrawPayload {
+    /// True when driving this step has to ACT on the page — type a code, click a
+    /// button — so the WebView must be presented first.
+    ///
+    /// A `poll` only reads: `probePostConfirm` queries the DOM and returns booleans.
+    /// `stepAside` dismisses the presentation but keeps the WebView alive, and
+    /// `callAsyncJavaScript` does not need it on screen, so a read needs nothing.
+    ///
+    /// This matters because the host polls a parked `id-verification` every few
+    /// seconds. Presenting just to read made Coinbase's risk page flash open and
+    /// shut on that cadence — a visible loop, on the very screen the user has been
+    /// told to leave for the Coinbase app.
+    var needsPagePresented: Bool {
+        switch self {
+        case .otp:  return true
+        case .poll: return false
+        }
     }
 }
 
@@ -398,6 +432,13 @@ public protocol WithdrawFlow: PlatformIdentity {
         payload: ContinueWithdrawPayload
     ) async throws -> WithdrawState
 
-    /// Returns whether Coinbase's "Cancel transfer" was found and clicked.
+    /// Tears the session down. Returns whether the platform's own "abort this
+    /// transfer" action was taken — NOT whether teardown succeeded, which the
+    /// coordinator guarantees either way.
+    ///
+    /// Coinbase always returns `false`: its only cancel button lives on the risk
+    /// screen, which is exactly when the user has been sent to the Coinbase app to
+    /// finish an identity check, so clicking it would destroy the transfer they were
+    /// told to complete.
     @MainActor func cancelWithdraw(session: AutomationSessionHandle) async throws -> Bool
 }

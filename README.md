@@ -25,6 +25,17 @@ The SDK exposes two flows you can present from your app:
 - Swift 6.0+
 - Xcode 16.0+
 
+### Required Info.plist keys
+
+Crypto transactions in the Fund SDK can be held by the exchange for an identity check, which the
+user completes inside the SDK's WebView using the camera. Your app must declare
+both keys below.
+
+| Key | Why |
+| --- | --- |
+| `NSCameraUsageDescription` | Liveness / document capture during the identity check |
+| `NSMicrophoneUsageDescription` | Requested alongside the camera by the identity check |
+
 ## Installation
 
 ### Swift Package Manager
