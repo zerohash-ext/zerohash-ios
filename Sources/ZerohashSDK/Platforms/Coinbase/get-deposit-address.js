@@ -38,6 +38,8 @@
   // `<network>-network` (NOT the desktop `*-cell-pressable` variants).
   function assetCell(a) { return '[data-testid="ReceiveAssetSelectorCell-' + a + '"]'; }
   function networkCell(n) { return '[data-testid="' + n + '-network"]'; }
+  var ANY_ASSET_CELL = '[data-testid^="ReceiveAssetSelectorCell-"]';
+  var SEARCH_INPUT = '[data-testid="search-input"]';
 
   var DEADLINE = Date.now() + 15000;
   function timeLeft() { return DEADLINE - Date.now(); }
@@ -50,6 +52,7 @@
   var realisticClick = D.realisticClick;
   var findButtonByText = D.findButtonByText;
   var clickableAncestor = D.clickableAncestor;
+  var setReactValue = D.setReactValue;
   // waitUntil/waitFor now take an explicit deadline; wrap to pass this run's DEADLINE.
   function waitUntil(find, timeoutMs) { return D.waitUntil(find, timeoutMs, DEADLINE); }
   function waitFor(sel, timeoutMs) { return D.waitFor(sel, timeoutMs, DEADLINE); }
@@ -79,10 +82,34 @@
     if (!step) throw new Error("receive_entry_not_found:step");
   }
 
+  function visibleAssets() {
+    var cells = document.querySelectorAll(ANY_ASSET_CELL);
+    var out = [];
+    for (var i = 0; i < cells.length; i++) {
+      var id = cells[i].getAttribute("data-testid") || "";
+      var sym = id.replace("ReceiveAssetSelectorCell-", "");
+      if (sym && out.indexOf(sym) === -1) out.push(sym);
+    }
+    return out;
+  }
+
   async function pickAsset() {
     var sel = assetCell(ASSET);
-    var el = await waitFor(sel, 6000).catch(function () { return null; });
-    if (!el) throw new Error("asset_not_available:" + ASSET);
+    var el = await waitFor(sel, 1200).catch(function () { return null; });
+    if (el) { realisticClick(el); return; }
+
+    var search = await waitUntil(function () { return $(SEARCH_INPUT); }, 1500);
+    if (search) {
+      search.focus();
+      setReactValue(search, ASSET);
+    }
+    el = await waitFor(sel, 4000).catch(function () { return null; });
+
+    if (!el) {
+      throw new Error(
+        "asset_not_available:" + ASSET + " visible=[" + visibleAssets().join(",") + "]"
+      );
+    }
     realisticClick(el);
   }
 
@@ -262,6 +289,17 @@
     }
     throw new Error("timeout");
   }
+
+  window.__zhDeposit = {
+    __internals: {
+      pickAsset: pickAsset,
+      SEL: {
+        assetCell: assetCell,
+        ANY_ASSET_CELL: ANY_ASSET_CELL,
+        SEARCH_INPUT: SEARCH_INPUT
+      }
+    }
+  };
 
   return run();
 })();

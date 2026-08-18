@@ -96,13 +96,17 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
         // `role: "zeroauth-host"` (matches zerohash-android's dispatchMessage and
         // connect-ios's NativeIOSMessageHandler). They carry `operation`, not `type`.
         if MessageBodyDecoder.isAutomationWebViewRequest(rawObject) {
+            let id = rawObject["id"] as? String ?? "-"
+            let platform = rawObject["platform"] as? String ?? "-"
+            let op = rawObject["operation"] as? String ?? "-"
+
+            Log.bridge.notice("inbound automation envelope id=\(id, privacy: .public) platform=\(platform, privacy: .public) op=\(op, privacy: .public) origin=\(host, privacy: .public)")
+
             let request: ZeroAuthRequest
             if let decoded = try? JSONDecoder().decode(ZeroAuthRequest.self, from: Data(jsonString.utf8)) {
                 request = decoded
             } else {
-                // Malformed envelope: route the synthetic probe so the automation
-                // router emits a structured reply instead of silently dropping it.
-                Log.error("[Bridge] Automation envelope failed to decode from '\(host)'; routing invalidEnvelopeProbe")
+                Log.bridge.error("automation envelope failed to decode; routing to invalidEnvelopeProbe")
                 request = .invalidEnvelopeProbe()
             }
             Task { @MainActor in
@@ -112,6 +116,8 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
         }
 
         guard let rawType = rawObject["type"] as? String else { return }
+
+        Log.bridge.notice("inbound common envelope op=\(rawType, privacy: .public) origin=\(host, privacy: .public)")
 
         if rawType.hasPrefix("console.") {
             Task { @MainActor in

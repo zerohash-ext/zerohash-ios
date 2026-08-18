@@ -58,7 +58,7 @@ final class AutomationWebViewMessageRouter: BridgeEventEmitting {
         // 2. platform lookup
         guard let platform = registry[req.platform] else {
             Log.automation.error("platform not registered: \(req.platform, privacy: .public) id=\(req.id, privacy: .public)")
-            sink?.send(response: errorResponse(id: req.id, error: .platformNotRegistered(req.platform)))
+            sink?.send(response: errorResponse(id: req.id, error: .platformNotRegistered(req.platform), operation: req.operation))
             return
         }
 
@@ -107,7 +107,7 @@ final class AutomationWebViewMessageRouter: BridgeEventEmitting {
             if case .cancelled = err {
                 sink?.send(event: BridgeEvent(correlationId: req.id, type: "cancelled", data: nil))
             }
-            sink?.send(response: errorResponse(id: req.id, error: err))
+            sink?.send(response: errorResponse(id: req.id, error: err, operation: req.operation))
         }
     }
 
@@ -124,7 +124,7 @@ final class AutomationWebViewMessageRouter: BridgeEventEmitting {
             if case .cancelled = err {
                 sink?.send(event: BridgeEvent(correlationId: req.id, type: "cancelled", data: nil))
             }
-            sink?.send(response: errorResponse(id: req.id, error: err))
+            sink?.send(response: errorResponse(id: req.id, error: err, operation: req.operation))
         }
     }
 
@@ -230,12 +230,31 @@ final class AutomationWebViewMessageRouter: BridgeEventEmitting {
         return raw.hasPrefix(prefix) ? String(raw.dropFirst(prefix.count)) : raw
     }
 
+    /// Whether the front-end may AUTOMATICALLY re-issue `operation`. Withdraw is out
+    /// because a re-issue could move funds twice, `getDepositAddress` because a retry
+    /// mints a fresh Lightning invoice. Unknown operations default to unsafe.
+    static func isSafeToRetry(operation: String) -> Bool {
+        switch operation {
+        case "auth.login", "auth.status", "getBalance", "core.ping":
+            return true
+        default:
+            return false
+        }
+    }
+
     private static func encode<T: Encodable>(_ value: T) throws -> JSONValue {
         let data = try JSONEncoder().encode(value)
         return try JSONDecoder().decode(JSONValue.self, from: data)
     }
 
-    private func errorResponse(id: String, error: AutomationWebViewError) -> ZeroAuthResponse {
-        ZeroAuthResponse(id: id, success: false, data: nil, error: error.wire, sessionId: nil, retryable: error.retryable)
+    /// `retryable` needs both a transient failure and a re-issuable operation.
+    private func errorResponse(
+        id: String,
+        error: AutomationWebViewError,
+        operation: String
+    ) -> ZeroAuthResponse {
+        ZeroAuthResponse(
+            id: id, success: false, data: nil, error: error.wire, sessionId: nil,
+            retryable: error.retryable && Self.isSafeToRetry(operation: operation))
     }
 }

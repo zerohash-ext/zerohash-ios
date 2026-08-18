@@ -340,19 +340,7 @@
   function humanDelay(ms) { return D.sleep(ms || 0); }
   function humanClick(el) { D.realisticClick(el); return D.sleep(50); }
 
-  // React-controlled inputs ignore a plain `input.value =`. Set via the native
-  // prototype descriptor's setter, then dispatch input/change so React's
-  // onChange fires. This is the crux of driving Coinbase's fields.
-  function setReactValue(input, value) {
-    var proto = input.tagName === "TEXTAREA"
-      ? window.HTMLTextAreaElement.prototype
-      : window.HTMLInputElement.prototype;
-    var desc = Object.getOwnPropertyDescriptor(proto, "value");
-    if (desc && desc.set) { desc.set.call(input, value); }
-    else { input.value = value; }
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-  }
+  var setReactValue = D.setReactValue;
 
   function typeLikeHuman(input, text) {
     input.focus();

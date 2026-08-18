@@ -22,7 +22,7 @@ enum AutomatedRunError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .timeout: return "timeout"
-        case .loadFailed(let detail): return "load failed: \(detail)"
+        case .loadFailed(let detail): return "loadFailed: \(detail)"
         case .abandoned: return "run abandoned"
         }
     }

@@ -26,8 +26,7 @@ const SOURCE = readFileSync(SRC, "utf8");
 // ECMAScript intrinsics come free inside a VM context. These are the host-provided
 // globals withdraw.js touches at LOAD time, so they are all the sandbox needs.
 // Deliberately absent: Event, DataTransfer, ClipboardEvent, HTMLInputElement.
-// Only setReactValue / dispatchPaste / enterOtp use those, and none of the
-// post-confirm code path does. Driving those functions here throws ReferenceError.
+//
 const hostGlobals = () => ({ setTimeout, clearTimeout, console });
 
 // window.__zhDom is injected separately in production (dom-helpers.js).

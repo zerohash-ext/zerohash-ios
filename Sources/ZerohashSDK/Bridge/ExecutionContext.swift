@@ -71,6 +71,16 @@ public enum ContextError: Error, Equatable {
     case hostUnavailable
 }
 
+extension ContextError: LocalizedError {
+    /// See `RunnerError.errorDescription`. The web classifier already matches
+    /// `hostUnavailable`.
+    public var errorDescription: String? {
+        switch self {
+        case .hostUnavailable: return "hostUnavailable"
+        }
+    }
+}
+
 @MainActor
 public protocol ExecutionContext {
     /// Modal WebView for interactive flows (auth.login). User-driven, with chrome

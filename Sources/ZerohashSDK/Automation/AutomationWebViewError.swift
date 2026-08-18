@@ -23,12 +23,19 @@ enum AutomationWebViewError: Error, Equatable {
         }
     }
 
-    /// Whether the front-end may retry. Only specific domain errors raised by
-    /// the balance flow are retryable; everything else is terminal.
+    /// Prefixes of the `RunnerError` / `ContextError` descriptions that mean the
+    /// page was fine and the attempt merely didn't land.
+    private static let transientPrefixes = [
+        "timeout:", "loadFailed:", "navigationLost", "hostUnavailable",
+    ]
+
+    /// Whether the failure was transient. Says nothing about whether the caller may
+    /// act on it — see `AutomationWebViewMessageRouter.isSafeToRetry`.
     var retryable: Bool {
         switch self {
         case .platformThrew(let s):
-            return s.hasPrefix("BALANCES_INDETERMINATE") || s == "CHALLENGE_UNSOLVED"
+            if s.hasPrefix("BALANCES_INDETERMINATE") || s == "CHALLENGE_UNSOLVED" { return true }
+            return Self.transientPrefixes.contains { s.hasPrefix($0) }
         case .platformNotRegistered, .unsupported, .cancelled, .invalidEnvelope:
             return false
         }

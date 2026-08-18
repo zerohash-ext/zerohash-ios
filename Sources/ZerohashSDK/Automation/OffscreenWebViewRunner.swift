@@ -30,6 +30,21 @@ enum RunnerError: Error, Equatable {
     case navigationLost
 }
 
+extension RunnerError: LocalizedError {
+    /// Wire-facing text; without it Foundation emits the useless
+    /// "(<Module>.RunnerError error <N>.)" — the case index, stage discarded. These
+    /// leading tokens are a contract with the web classifier
+    /// (translate-scraping-error.ts); rewording them downgrades users to the generic
+    /// "Something went wrong" bucket.
+    var errorDescription: String? {
+        switch self {
+        case .timeout(let stage):     return "timeout: \(stage.rawValue)"
+        case .loadFailed(let detail): return "loadFailed: \(detail)"
+        case .navigationLost:         return "navigationLost"
+        }
+    }
+}
+
 /// One-shot async signal used by `OffscreenWebViewRunner.runSerialised`.
 /// The gate task awaits `wait()`; the caller invokes `fire()` after the
 /// body completes, releasing the next caller in the queue.
@@ -91,6 +106,10 @@ private final class OneShotSignalMA<T: Sendable> {
 final class OffscreenWebViewRunner: NSObject, WKNavigationDelegate {
     private let config: WKWebViewConfiguration
     private var webView: WKWebView?
+
+    /// Web view of the CURRENT run. The runner is reused and never clears the old
+    /// view's `navigationDelegate`, so a stale callback can still land here.
+    private var activeWebViewId: Int?
 
     /// Monotonic counter incremented on every `didFinish`. Lets a waiter
     /// suspended after generation `N` resume on any later generation,
@@ -238,6 +257,7 @@ final class OffscreenWebViewRunner: NSObject, WKNavigationDelegate {
         // proceed until its predecessor's body has completed.
         let predecessor = serialQueue
         let hasPredecessor = predecessor != nil
+        let queueStart = Date()
         Log.runner.debug("runSerialised entering hasPredecessor=\(hasPredecessor)")
         // A signal that the gate task awaits — we resume it after running
         // the body, which is what unblocks the next caller in line.
@@ -250,7 +270,8 @@ final class OffscreenWebViewRunner: NSObject, WKNavigationDelegate {
         // Wait for our turn.
         await predecessor?.value
         if hasPredecessor {
-            Log.runner.debug("runSerialised predecessor finished; running body")
+            let queuedMs = Int(Date().timeIntervalSince(queueStart) * 1000)
+            Log.runner.notice("runSerialised predecessor finished after \(queuedMs)ms; running body")
         }
         defer {
             Task { await signal.fire() }
@@ -353,14 +374,12 @@ final class OffscreenWebViewRunner: NSObject, WKNavigationDelegate {
                         let newHost = newURL.host ?? "?"
                         Log.runner.debug("[runGen=\(myGeneration)] iter=\(iter) script killed by navigation in \(raceMs)ms; prevHost=\(prevHost, privacy: .private) newHost=\(newHost, privacy: .private)")
                         if newHost == prevHost {
-                            let waitSnapshot = navigationGeneration
-                            let waitMs = Int(max(0, deadline.timeIntervalSinceNow * 1000))
-                            guard waitMs > 0 else {
-                                throw RunnerError.navigationLost
-                            }
-                            settledURL = try await withTimeout(ms: waitMs, stage: .navigationSettle) {
-                                try await self.waitForLoad(after: waitSnapshot)
-                            }
+                            settledURL = try await settleAfterSameHostNavigation(
+                                fallback: newURL,
+                                deadline: deadline,
+                                myGeneration: myGeneration,
+                                iter: iter
+                            )
                         } else {
                             settledURL = newURL
                         }
@@ -379,16 +398,12 @@ final class OffscreenWebViewRunner: NSObject, WKNavigationDelegate {
                         // Same-host nav — the predicate would just return
                         // `.evaluate` again and we'd race the same script
                         // against another nav, potentially in a tight loop.
-                        // Instead wait for the *next* nav before re-consulting.
-                        let waitSnapshot = navigationGeneration
-                        let waitMs = Int(max(0, deadline.timeIntervalSinceNow * 1000))
-                        guard waitMs > 0 else {
-                            throw RunnerError.navigationLost
-                        }
-                        Log.runner.debug("[runGen=\(myGeneration)] iter=\(iter) same-host nav after race; waiting up to \(waitMs)ms for next didFinish")
-                        settledURL = try await withTimeout(ms: waitMs, stage: .navigationSettle) {
-                            try await self.waitForLoad(after: waitSnapshot)
-                        }
+                        settledURL = try await settleAfterSameHostNavigation(
+                            fallback: newURL,
+                            deadline: deadline,
+                            myGeneration: myGeneration,
+                            iter: iter
+                        )
                     } else {
                         settledURL = newURL
                     }
@@ -405,6 +420,40 @@ final class OffscreenWebViewRunner: NSObject, WKNavigationDelegate {
                 Log.runner.debug("[runGen=\(myGeneration)] iter=\(iter) next didFinish url=\(settledURL.absoluteString, privacy: .private)")
                 try Self.checkGeneration(current: self.runGeneration, expected: myGeneration)
             }
+        }
+    }
+
+    /// How long a same-host navigation gets to be followed by another before we call
+    /// the page settled.
+    private static let sameHostQuietMs = 1_500
+
+    /// Waits briefly for a FURTHER navigation: one arriving means the page is still
+    /// churning, so return its URL; a quiet window means it settled, so return
+    /// `fallback` and let the caller re-run the script. This used to wait out the
+    /// whole deadline, which hung forever on a page that navigates once and stops.
+    private func settleAfterSameHostNavigation(
+        fallback: URL,
+        deadline: Date,
+        myGeneration: Int,
+        iter: Int
+    ) async throws -> URL {
+        let remainingMs = Int(max(0, deadline.timeIntervalSinceNow * 1000))
+        guard remainingMs > 0 else {
+            throw RunnerError.navigationLost
+        }
+        let waitMs = min(Self.sameHostQuietMs, remainingMs)
+        let waitSnapshot = navigationGeneration
+        Log.runner.debug("[runGen=\(myGeneration)] iter=\(iter) same-host nav after race; waiting up to \(waitMs)ms for a further didFinish")
+        do {
+            let url = try await withTimeout(ms: waitMs, stage: .navigationSettle) {
+                try await self.waitForLoad(after: waitSnapshot)
+            }
+            Log.runner.debug("[runGen=\(myGeneration)] iter=\(iter) page navigated again; re-consulting settle")
+            return url
+        } catch let e as RunnerError {
+            guard case .timeout = e else { throw e }
+            Log.runner.notice("[runGen=\(myGeneration)] iter=\(iter) page quiet for \(waitMs)ms; re-evaluating script")
+            return fallback
         }
     }
 
@@ -495,8 +544,16 @@ final class OffscreenWebViewRunner: NSObject, WKNavigationDelegate {
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = self
         self.webView = wv
-        Log.runner.debug("createWebView pid=\(ProcessInfo.processInfo.processIdentifier) wvId=\(ObjectIdentifier(wv).hashValue)")
+        self.activeWebViewId = ObjectIdentifier(wv).hashValue
+        Log.runner.notice("createWebView pid=\(ProcessInfo.processInfo.processIdentifier) wvId=\(ObjectIdentifier(wv).hashValue)")
         return wv
+    }
+
+    /// `wvId`, plus whether the callback came from an earlier run's web view.
+    private func wvTag(_ webView: WKWebView) -> String {
+        let id = ObjectIdentifier(webView).hashValue
+        let stale = activeWebViewId != nil && id != activeWebViewId
+        return "wvId=\(id) stale=\(stale)"
     }
 
     /// Awaits at least one new `didFinish` after `minGeneration`. Resolves
@@ -596,21 +653,28 @@ final class OffscreenWebViewRunner: NSObject, WKNavigationDelegate {
         decisionHandler(.allow)
     }
 
+    /// Proof the load actually started: a `.initialLoad` timeout with no
+    /// `didStartProvisional` means WebKit never began it. `.notice` so it reaches
+    /// disk in a release build.
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation nav: WKNavigation!) {
+        Log.runner.notice("didStartProvisional navGen=\(self.navigationGeneration) \(self.wvTag(webView), privacy: .public) host=\(webView.url?.host ?? "?", privacy: .public) waitingFor=\(self.waiters.count)")
+    }
+
     func webView(_ webView: WKWebView, didFinish nav: WKNavigation!) {
         navigationGeneration += 1
         let url = webView.url ?? URL(string: "about:blank")!
         lastFinishedURL = url
-        Log.runner.debug("didFinish navGen=\(self.navigationGeneration) host=\(url.host ?? "?", privacy: .private) url=\(url.absoluteString, privacy: .private) waitingFor=\(self.waiters.count)")
+        Log.runner.notice("didFinish navGen=\(self.navigationGeneration) \(self.wvTag(webView), privacy: .public) host=\(url.host ?? "?", privacy: .public) url=\(url.absoluteString, privacy: .private) waitingFor=\(self.waiters.count)")
         resumeWaitersOnFinish(url)
     }
 
     func webView(_ webView: WKWebView, didFail nav: WKNavigation!, withError e: Error) {
-        Log.runner.error("didFail navGen=\(self.navigationGeneration) error=\(e.localizedDescription, privacy: .public)")
+        Log.runner.error("didFail navGen=\(self.navigationGeneration) \(self.wvTag(webView), privacy: .public) host=\(webView.url?.host ?? "?", privacy: .public) error=\(e.localizedDescription, privacy: .public)")
         resumeWaitersOnFailure(RunnerError.loadFailed(e.localizedDescription))
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation nav: WKNavigation!, withError e: Error) {
-        Log.runner.error("didFailProvisionalNavigation navGen=\(self.navigationGeneration) error=\(e.localizedDescription, privacy: .public)")
+        Log.runner.error("didFailProvisionalNavigation navGen=\(self.navigationGeneration) \(self.wvTag(webView), privacy: .public) host=\(webView.url?.host ?? "?", privacy: .public) error=\(e.localizedDescription, privacy: .public)")
         resumeWaitersOnFailure(RunnerError.loadFailed(e.localizedDescription))
     }
 }
