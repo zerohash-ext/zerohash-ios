@@ -121,11 +121,18 @@
   var PREVIEW_SEND = '[data-testid="preview-send-button"]';
   var ASSET_BALANCE = '[data-testid="asset-balance-cell"]';
 
-  // Travel rule (FATF) form
+  // Travel rule (FATF) form — Coinbase's `recipientInfoStep` ("Who are you
+  // sending to?"). Carries beneficiary name, a country select, a BR CPF/tax-id
+  // field, and the self-transfer checkbox.
   var BENEFICIARY_NAME = '[data-testid="beneficiary-full-name"]';
   var COUNTRY_SELECT = '[data-testid="country-select"]';
   function countryOption(cc) { return '[data-testid="country-option-' + cc + '"]'; }
   var SUBMIT_BUTTON = '[data-testid="submit-button"]';
+  // "I'm transferring to myself" checkbox. The real <input type=checkbox> is
+  // visually hidden behind a styled wrapper; `own-account-checkbox-parent` is the
+  // hittable element. Ticking it collapses (auto-fills) the name + CPF fields.
+  var OWN_ACCOUNT_CHECKBOX = '[data-testid="own-account-checkbox"]';
+  var OWN_ACCOUNT_CHECKBOX_PARENT = '[data-testid="own-account-checkbox-parent"]';
 
   // Transfer details (purpose + relationship) form
   var TRANSFER_PURPOSE = '[data-testid="transfer-purpose-select"]';
@@ -215,6 +222,8 @@
     COUNTRY_SELECT: COUNTRY_SELECT,
     countryOption: countryOption,
     SUBMIT_BUTTON: SUBMIT_BUTTON,
+    OWN_ACCOUNT_CHECKBOX: OWN_ACCOUNT_CHECKBOX,
+    OWN_ACCOUNT_CHECKBOX_PARENT: OWN_ACCOUNT_CHECKBOX_PARENT,
     TRANSFER_PURPOSE: TRANSFER_PURPOSE,
     TRANSFER_RELATIONSHIP: TRANSFER_RELATIONSHIP,
     TRANSFER_SUBMIT: TRANSFER_SUBMIT,
@@ -667,19 +676,62 @@
     if (again) await humanClick(again);
   }
 
+  // Tagged error for an address that can't receive the chosen asset — Coinbase
+  // shows the asset disabled ("Incompatible" section) or NO sendable asset at all
+  // ("No compatible assets"). Terminal + user-actionable (different asset or
+  // address); `start`'s catch converts it to a rejected/address_unsupported state
+  // rather than clicking a disabled cell and timing out into no-next-screen.
+  function addressUnsupportedError() {
+    var e = new Error("withdraw/address-unsupported: this asset can't be sent to the recipient address");
+    e.zhAddressUnsupported = true;
+    return e;
+  }
+
+  // True when the asset-selection step is up but EVERY asset cell is disabled — the
+  // "No compatible assets" state. Structural (not text/locale based): a single
+  // enabled cell means a normal, still-loading list, not an incompatible address.
+  function isNoCompatibleAssets() {
+    if (readActiveStep() !== "assetSelection") return false;
+    var cells = Array.prototype.slice.call(document.querySelectorAll(SEL.COIN_LIST));
+    return cells.length > 0 && cells.every(function (c) { return isDisabled(c); });
+  }
+
+  // Polls the incompatible state must persist before we trust it — a still-loading
+  // list can read as all-disabled for a moment. Mirrors the extension.
+  var INCOMPATIBLE_CONFIRM_POLLS = 6;
+
   async function selectCoin(ticker) {
     var directSelector = SEL.coinDirect(ticker);
     var start = Date.now();
+    var incompatibleStreak = 0;
     while (Date.now() - start < 5000) {
       var direct = document.querySelector(directSelector);
-      if (direct) { await clickAndVerifyAdvance(direct, "selectCoin(" + ticker + ")"); return; }
+      if (direct && !isDisabled(direct)) {
+        await clickAndVerifyAdvance(direct, "selectCoin(" + ticker + ")");
+        return;
+      }
+      // Incompatible with the recipient address: the requested asset's own cell is
+      // disabled, or no asset is sendable at all. Bail with a specific error (not a
+      // no-op click + generic no-next-screen) once the state is confirmed stable.
+      var incompatible = (direct !== null && isDisabled(direct)) || isNoCompatibleAssets();
+      incompatibleStreak = incompatible ? incompatibleStreak + 1 : 0;
+      if (incompatibleStreak >= INCOMPATIBLE_CONFIRM_POLLS) throw addressUnsupportedError();
       await D.sleep(150);
     }
+    // 5s without an enabled target cell. Surface incompatibility specifically,
+    // else enumerate what's on screen for a useful not-found error.
+    if (isNoCompatibleAssets()) throw addressUnsupportedError();
     var items = Array.prototype.slice.call(document.querySelectorAll(SEL.COIN_LIST));
     for (var i = 0; i < items.length; i++) {
       var testId = items[i].getAttribute("data-testid") || "";
       var t = testId.replace("send-asset-selector-cell-", "").replace("-cell-pressable", "").toUpperCase();
-      if (t === ticker.toUpperCase()) { await clickAndVerifyAdvance(items[i], "selectCoin"); return; }
+      if (t === ticker.toUpperCase()) {
+        // Present but disabled for this address — a specific, user-actionable
+        // rejection rather than a no-op click.
+        if (isDisabled(items[i])) throw addressUnsupportedError();
+        await clickAndVerifyAdvance(items[i], "selectCoin");
+        return;
+      }
     }
     var available = items.map(function (it) {
       var id = it.getAttribute("data-testid") || "";
@@ -760,18 +812,76 @@
   async function selectRecipientTypeIfPresent(type) {
     var step = await waitForElement(SEL.STEP_SELECT_RECIPIENT_TYPE, 10000).catch(function () { return null; });
     if (!step || !queryVisible(SEL.STEP_SELECT_RECIPIENT_TYPE)) return;
-    var btn = step.querySelector(RECIPIENT_TYPE_OPTION[type]);
-    if (!btn) throw new Error("withdraw/recipient-type-option-not-found: " + type);
-    btn.click();
+    var selector = RECIPIENT_TYPE_OPTION[type];
+    if (!selector) throw new Error("withdraw/recipient-type-option-not-found: " + type);
+    // The step container mounts BEFORE its option buttons render, so a single
+    // query races the mount — poll for the option, re-reading the (possibly
+    // re-rendered) step each iteration.
+    var btn = await pollUntil(function () {
+      var s = queryVisible(SEL.STEP_SELECT_RECIPIENT_TYPE) || step;
+      return s ? s.querySelector(selector) : null;
+    }, 5000, "withdraw/recipient-type-option-not-found: " + type);
+    await humanClick(btn);
+  }
+
+  // The self-transfer checkbox on the travel-rule form ("I'm transferring to
+  // myself"), matched by its own testid — the page carries several checkboxes, so
+  // a structural "first checkbox" match would be wrong. Returns the <input> (or
+  // null when absent — callers treat that as "fall back to manual entry").
+  function selfTransferCheckbox() {
+    return document.querySelector(SEL.OWN_ACCOUNT_CHECKBOX);
+  }
+
+  function isChecked(box) {
+    return !!(box && (box.checked || box.getAttribute("aria-checked") === "true"));
+  }
+
+  // The real <input type=checkbox> is visually hidden behind a styled wrapper, so
+  // a click on the input itself doesn't register — click the hittable parent
+  // (own-account-checkbox-parent), falling back to the input.
+  function clickCheckbox(box) {
+    var parent = queryVisible(SEL.OWN_ACCOUNT_CHECKBOX_PARENT);
+    return humanClick(parent || box);
   }
 
   // Travel-rule (FATF) "Who are you sending to?" form. Returns "filled" or
-  // "not_required" (never appeared). Throws if it appeared but the host didn't
-  // supply travelRule data. (The "I'm sending to myself" checkbox is not used —
-  // we fill beneficiary name + country.)
-  async function fillTravelRule(data) {
+  // "not_required" (never appeared).
+  //
+  // Self-transfer (opts.selfTransfer): the host is sending to the user's OWN
+  // account, so tick Coinbase's "I'm transferring to myself" checkbox instead of
+  // typing beneficiary details — it auto-fills the beneficiary (name + BR CPF)
+  // from the account holder, which also sidesteps the localized/required CPF field
+  // we can't populate ourselves. Only when the checkbox is actually present;
+  // otherwise falls through to manual entry (which still throws if the host
+  // supplied no beneficiary name).
+  async function fillTravelRule(data, opts) {
+    opts = opts || {};
     var which = await waitForAny([SEL.BENEFICIARY_NAME, SEL.SEND_NOW], 10000);
     if (which !== SEL.BENEFICIARY_NAME) return "not_required";
+
+    if (opts.selfTransfer) {
+      var box = selfTransferCheckbox();
+      if (box) {
+        // Tick it (idempotent). The click lands on the styled parent, so confirm
+        // the underlying input toggled and retry once before trusting it.
+        if (!isChecked(box)) {
+          await clickCheckbox(box);
+          await pollUntil(function () { return isChecked(selfTransferCheckbox()) ? true : null; }, 1500)
+            .catch(function () { return null; });
+          if (!isChecked(selfTransferCheckbox())) await clickCheckbox(box);
+        }
+        // Coinbase validates async; wait for the submit to enable before clicking.
+        var submitSelf = await pollUntil(function () {
+          var b = queryVisible(SEL.SUBMIT_BUTTON);
+          return (b && !isDisabled(b)) ? b : null;
+        }, 5000, "withdraw/travel-rule-self-submit-not-ready");
+        await humanClick(submitSelf);
+        await D.sleep(500);
+        return "filled";
+      }
+      // Checkbox not found — fall through to manual entry (no regression).
+    }
+
     if (!data || !data.name) throw new Error("withdraw/travel-rule-missing-data");
 
     var nameInput = await waitForElement(SEL.BENEFICIARY_NAME, 5000);
@@ -1057,15 +1167,53 @@
     SEL.STEP_RISK_VERIFICATION, SEL.SEND_SUCCESS, SEL.STATUS_COMPLETE_BTN
   ];
 
-  async function confirmAndSend() {
+  function normalizeAddress(addr) {
+    return String(addr || "").trim().toLowerCase().replace(/\s+/g, "");
+  }
+
+  // Best-effort check that the recipient shown on the confirm/preview screen is
+  // the address the host authorized. The preview may render a contact name and/or
+  // a TRUNCATED address ("Sandro … 9LFU…UGd2"), so we assert only what we can and
+  // PASS whenever nothing comparable is present — this must never block a send it
+  // can't verify, only catch a positive contradiction. DOM-based (not the server
+  // commit response the extension uses), so it guards a wrong-row/autofill send,
+  // NOT an active DOM attacker.
+  function previewRecipientMatches(previewText, authorized) {
+    var want = normalizeAddress(authorized);
+    if (!want || !previewText) return true;
+    if (normalizeAddress(previewText).indexOf(want) !== -1) return true; // full address shown
+    // Truncated head…tail (ellipsis U+2026 or "..."). Match on the ORIGINAL text so
+    // whitespace still separates a leading contact name from the address.
+    var m = previewText.match(/([A-Za-z0-9]{3,})\s*(?:…|\.{2,})\s*([A-Za-z0-9]{3,})/);
+    if (!m) return true; // no address-like token → nothing to assert
+    var head = m[1].toLowerCase();
+    var tail = m[2].toLowerCase();
+    if (want.slice(-tail.length) !== tail) return false; // tail is the reliable suffix
+    if (want.indexOf(head) === 0) return true;
+    // Tolerate a contact name fused onto the head: some suffix of head prefixes want.
+    for (var i = 1; i <= head.length - 3; i++) {
+      if (want.indexOf(head.slice(i)) === 0) return true;
+    }
+    return false;
+  }
+
+  function recipientMismatchError() {
+    return new Error("withdraw/recipient-mismatch: preview recipient does not match the authorized address");
+  }
+
+  async function confirmAndSend(authorizedAddress) {
     var which = await waitForAny([SEL.SEND_NOW, SEL.CURRENCY_INPUT].concat(POST_SEND_GATES), 15000);
     if (!which) throw new Error("Neither confirm screen nor amount screen appeared");
     if (which === SEL.CURRENCY_INPUT) throw new Error(readAmountValidationError());
     // Advanced past confirm into a 2FA/risk/success gate — read what we can; the
-    // caller's detectAndHandle2fa handles the gate next.
+    // caller's detectAndHandle2fa handles the gate next. (No pre-click verify here:
+    // the send already advanced, so there's nothing left to prevent.)
     if (which !== SEL.SEND_NOW) return readSendPreview();
 
     var details = readSendPreview();
+    // Verify the previewed recipient matches what the host authorized BEFORE
+    // clicking Send now — refuse to authorize a send to a mismatched address.
+    if (!previewRecipientMatches(details.recipient, authorizedAddress)) throw recipientMismatchError();
     await humanDelay(500); // let the preview settle / human "review"
     var sendBtn = await waitForElement(SEL.SEND_NOW, 5000);
     await humanClick(sendBtn);
@@ -1395,9 +1543,15 @@
         await runSelectionPhase(params);
         await enterAmount(params.amount, params.asset);
         await selectRecipientTypeIfPresent(params.recipientType || "self-custody");
-        await fillTravelRule(params.travelRule);
+        // Self-transfer: the webapp sends transferDetails.purpose "Transfer to my
+        // own account" for sends to the user's own account. Signal it so
+        // fillTravelRule ticks the "I'm transferring to myself" checkbox (which
+        // auto-fills the beneficiary + BR CPF) rather than typing beneficiary data.
+        var isSelfTransfer = !!(params.transferDetails &&
+          params.transferDetails.purpose === "Transfer to my own account");
+        await fillTravelRule(params.travelRule, { selfTransfer: isSelfTransfer });
         await fillTransferDetails(params.transferDetails);
-        var details = await confirmAndSend();
+        var details = await confirmAndSend(params.address);
         moduleState().details = details; // persist for continue()
         var outcome = await detectAndHandle2fa();
         if (outcome.kind === "none") return await finalizeSubmitted(details);
@@ -1408,6 +1562,12 @@
         // what to resolve at coinbase.com.
         if (e && e.zhPendingTransfer) {
           return { state: "rejected", reason: "pending_transfer", pendingTransfer: e.zhPendingTransfer };
+        }
+        // The recipient address can't receive the chosen asset ("No compatible
+        // assets" / disabled cell) — terminal + user-actionable, so surface a
+        // specific rejection instead of the generic coin/no-next-screen error.
+        if (e && e.zhAddressUnsupported) {
+          return { state: "rejected", reason: "address_unsupported" };
         }
         throw e;
       }
@@ -1471,7 +1631,8 @@
       pastNetworkWarning: pastNetworkWarning,
       detectNextScreen: detectNextScreen,
       dismissNetworkWarning: dismissNetworkWarning,
-      runSelectionPhase: runSelectionPhase
+      runSelectionPhase: runSelectionPhase,
+      previewRecipientMatches: previewRecipientMatches
     }
   };
 })();

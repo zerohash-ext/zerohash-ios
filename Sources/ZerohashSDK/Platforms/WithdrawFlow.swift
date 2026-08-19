@@ -206,6 +206,10 @@ public enum WithdrawRejectReason {
     /// Coinbase offered no code-based alternative. Terminal — the host should tell
     /// the user to enable SMS/authenticator 2FA.
     public static let passkeyUnsupported = "passkey_unsupported"
+    /// The recipient address can't receive the chosen asset — the asset is shown
+    /// disabled or "No compatible assets". Terminal + user-actionable (a different
+    /// asset or address).
+    public static let addressUnsupported = "address_unsupported"
 }
 
 /// State returned at every pause/terminal point of a withdraw session — a
