@@ -16,7 +16,8 @@ class IntegrationsWebViewController: UIViewController,
     private let callbacks: IntegrationsWebViewCallbacks
     /// Hash route segment served by the mobile web app (`/mobile/#<appIdentifier>`),
     /// and the prefix the web app's completion message maps to. `fund` for the
-    /// Fund flow, `crypto-withdrawals` for the withdrawal flow.
+    /// Fund flow, `crypto-withdrawals` for the crypto-withdrawal flow,
+    /// `fund-withdrawals` for the fund-withdrawal flow.
     private let appIdentifier: String
 
     private var loadingManager: WebViewLoadingManager!
@@ -348,6 +349,17 @@ class IntegrationsWebViewController: UIViewController,
     /// `crypto-withdrawal` for the crypto-withdrawals route; both land on the
     /// same completion sink.
     func messageHandlerDidReceiveCryptoWithdrawal(
+        _ handler: IntegrationsWebViewMessageHandler,
+        data: [String: Any],
+        jsonString: String
+    ) {
+        callbacks.onCompleted?(data, jsonString)
+    }
+
+    /// Completion for the fund-withdrawals route. The mobile web app posts
+    /// `fund-withdrawal`; like `deposit`/`crypto-withdrawal` it lands on the
+    /// same completion sink and the session types the payload.
+    func messageHandlerDidReceiveFundWithdrawal(
         _ handler: IntegrationsWebViewMessageHandler,
         data: [String: Any],
         jsonString: String

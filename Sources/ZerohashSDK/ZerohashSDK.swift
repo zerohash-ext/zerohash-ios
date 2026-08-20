@@ -47,6 +47,28 @@ public class ZerohashSDK {
             callbacks: callbacks
         )
     }
+
+    /// Configures a fund-withdrawals session that can be presented later
+    /// - Parameters:
+    ///   - jwt: JWT token for authentication
+    ///   - environment: Environment to use (defaults to production)
+    ///   - theme: UI theme (defaults to system)
+    ///   - callbacks: Optional callbacks for withdrawal events
+    /// - Returns: A ZerohashFundWithdrawalsSession ready to be presented
+    @MainActor
+    public static func configureFundWithdrawals(
+        jwt: String,
+        environment: Environment = .production,
+        theme: Theme = .system,
+        callbacks: FundWithdrawalsCallbacks = FundWithdrawalsCallbacks()
+    ) -> ZerohashFundWithdrawalsSession {
+        return ZerohashFundWithdrawalsSession(
+            jwt: jwt,
+            environment: environment,
+            theme: theme,
+            callbacks: callbacks
+        )
+    }
 }
 
 // MARK: - SDK Version

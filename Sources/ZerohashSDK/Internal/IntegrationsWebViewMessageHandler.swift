@@ -12,6 +12,8 @@ protocol IntegrationsWebViewMessageHandlerDelegate: AnyObject {
         _ handler: IntegrationsWebViewMessageHandler, data: [String: Any], jsonString: String)
     func messageHandlerDidReceiveCryptoWithdrawal(
         _ handler: IntegrationsWebViewMessageHandler, data: [String: Any], jsonString: String)
+    func messageHandlerDidReceiveFundWithdrawal(
+        _ handler: IntegrationsWebViewMessageHandler, data: [String: Any], jsonString: String)
     func messageHandler(
         _ handler: IntegrationsWebViewMessageHandler, didReceiveEvent type: String, data: [String: Any],
         jsonString: String)
@@ -26,7 +28,8 @@ protocol IntegrationsWebViewMessageHandlerDelegate: AnyObject {
 
 /// Bridge contract matches the zerohash mobile web app (`apps/mobile`):
 /// inbound (web→native) `page-ready`, `content-ready`, `navigate`, `close`,
-/// `error`, `event`, `deposit`, `crypto-withdrawal`; outbound (native→web) `jwt`, `config`.
+/// `error`, `event`, `deposit`, `crypto-withdrawal`, `fund-withdrawal`;
+/// outbound (native→web) `jwt`, `config`.
 class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegate,
     WKUIDelegate
 {
@@ -315,6 +318,10 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
         case "crypto-withdrawal":
             let data = jsonObject["data"] as? [String: Any] ?? [:]
             delegate?.messageHandlerDidReceiveCryptoWithdrawal(self, data: data, jsonString: jsonString)
+
+        case "fund-withdrawal":
+            let data = jsonObject["data"] as? [String: Any] ?? [:]
+            delegate?.messageHandlerDidReceiveFundWithdrawal(self, data: data, jsonString: jsonString)
 
         case "close":
             delegate?.messageHandlerDidReceiveClose(self)

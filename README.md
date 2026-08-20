@@ -6,10 +6,11 @@
 
 Swift SDK for integrating [zerohash](https://docs.zerohash.com) products into your iOS app.
 
-The SDK exposes two flows you can present from your app:
+The SDK exposes three flows you can present from your app:
 
 - **Fund** — account funding / pay-to-settle flow
 - **Crypto Withdrawals** — withdraw crypto to an external address
+- **Fund Withdrawals** — withdraw funds to a linked (Auth connection) destination
 
 ## Features
 
@@ -169,6 +170,46 @@ class WithdrawalsViewController: UIViewController {
 }
 ```
 
+### Fund Withdrawals
+
+The Fund Withdrawals app walks the end user through withdrawing funds to a
+linked (Auth connection) destination. Use `onWithdrawal` to react to the
+completed withdrawal.
+
+```swift
+import UIKit
+import ZerohashSDK
+
+class FundWithdrawalsViewController: UIViewController {
+
+    private var fundWithdrawalsSession: ZerohashFundWithdrawalsSession?
+
+    @IBAction func startFundWithdrawalTapped(_ sender: UIButton) {
+        let callbacks = FundWithdrawalsCallbacks(
+            onClose: { print("Fund Withdrawals closed") },
+            onWithdrawal: { withdrawal in
+                print("Withdrawal initiated: \(withdrawal.amount ?? "unknown") \(withdrawal.assetSymbol ?? "")")
+            },
+            onError: { error in
+                print("Fund Withdrawals error \(error.code): \(error.message)")
+            },
+            onEvent: { event in
+                print("Fund Withdrawals event: \(event.type)")
+            }
+        )
+
+        fundWithdrawalsSession = ZerohashSDK.configureFundWithdrawals(
+            jwt: "your-jwt-token",
+            environment: .production,
+            theme: .system,
+            callbacks: callbacks
+        )
+
+        fundWithdrawalsSession?.present(from: self)
+    }
+}
+```
+
 ## API Reference
 
 ### ZerohashSDK
@@ -203,9 +244,23 @@ Configures a Crypto Withdrawals session that can be presented later. Returns a
 | `theme` | `Theme` | `.system` | `.light`, `.dark`, or `.system` |
 | `callbacks` | `CryptoWithdrawalsCallbacks` | empty | Event callbacks for the Crypto Withdrawals flow |
 
-### ZerohashFundSession / ZerohashCryptoWithdrawalsSession
+#### `configureFundWithdrawals(jwt:environment:theme:callbacks:)`
 
-Both session types expose the same lifecycle:
+Configures a Fund Withdrawals session that can be presented later. Returns a
+`ZerohashFundWithdrawalsSession`.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `jwt` | `String` | — | JWT token authenticating the end user |
+| `environment` | `Environment` | `.production` | `.sandbox` or `.production` |
+| `theme` | `Theme` | `.system` | `.light`, `.dark`, or `.system` |
+| `callbacks` | `FundWithdrawalsCallbacks` | empty | Event callbacks for the Fund Withdrawals flow |
+
+### ZerohashFundSession / ZerohashCryptoWithdrawalsSession / ZerohashFundWithdrawalsSession
+
+All session types expose the same lifecycle:
 
 #### `present(from:)`
 
@@ -264,6 +319,17 @@ struct CryptoWithdrawalsCallbacks {
 }
 ```
 
+#### FundWithdrawalsCallbacks
+
+```swift
+struct FundWithdrawalsCallbacks {
+    var onClose: (() -> Void)?
+    var onWithdrawal: ((FundWithdrawalsEvent) -> Void)?
+    var onError: ((ErrorEvent) -> Void)?
+    var onEvent: ((GenericEvent) -> Void)?
+}
+```
+
 ## Callbacks and Events
 
 ### onFund
@@ -283,6 +349,18 @@ Called when the Crypto Withdrawals flow submits a withdrawal.
 
 ```swift
 withdrawal.withdrawalRequestId       // String? — withdrawal request ID returned by the API
+withdrawal.data                      // [String: Any] — raw event payload
+withdrawal.jsonString                // String  — raw JSON string
+withdrawal.getString("key")          // String?
+```
+
+The Fund Withdrawals flow uses the same `onWithdrawal` callback with a
+`FundWithdrawalsEvent`:
+
+```swift
+withdrawal.externalAccountId         // String? — resolved destination account
+withdrawal.assetSymbol               // String? — asset withdrawn
+withdrawal.amount                    // String? — amount withdrawn
 withdrawal.data                      // [String: Any] — raw event payload
 withdrawal.jsonString                // String  — raw JSON string
 withdrawal.getString("key")          // String?
