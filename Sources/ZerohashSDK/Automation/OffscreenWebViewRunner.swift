@@ -482,7 +482,7 @@ final class OffscreenWebViewRunner: NSObject, WKNavigationDelegate {
               last == ";" || CharacterSet.whitespacesAndNewlines.contains(last) {
             expr.removeLast()
         }
-        let wrapped = "return (\n\(expr)\n);"
+        let wrapped = "\(TelemetryInstall.prelude())return (\n\(expr)\n);"
         let host = webView.url?.host ?? "?"
         Log.runner.debug("evaluateAsync starting host=\(host, privacy: .private) wrapperLen=\(wrapped.count)")
         let start = Date()

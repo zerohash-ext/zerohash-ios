@@ -202,6 +202,12 @@ async function replay(spec) {
 // This script assumes any Cloudflare challenge has ALREADY cleared: the native
 // runner gates evaluation on challenge clearance (waitForChallengeClearance) so
 // it survives Cloudflare's post-solve page reload. So here we just replay.
+// Framework-telemetry breadcrumb. No-op unless the native install prelude ran for
+// this dispatch (i.e. telemetry is on); never carries PII.
+function bc(phase, note) {
+  if (typeof window !== "undefined" && window.__zhTelemetry) window.__zhTelemetry.breadcrumb(phase, note);
+}
+
 async function run(params, queries) {
   const ops = (params && Array.isArray(params.ops) && params.ops.length)
     ? params.ops
@@ -210,6 +216,7 @@ async function run(params, queries) {
   if (ops.length === 0) throw new Error("BALANCES_INDETERMINATE: no ops — could not load a complete response");
   const balances = [];
   for (const op of ops) {
+    bc("replay", op);
     const spec = queries && queries[op];
     if (!spec) throw new Error("BALANCES_INDETERMINATE: " + op + " — could not load a complete response");
     const replayed = await replay(spec);

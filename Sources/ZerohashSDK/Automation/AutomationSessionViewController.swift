@@ -125,7 +125,7 @@ final class AutomationSessionViewController:
               last == ";" || CharacterSet.whitespacesAndNewlines.contains(last) {
             expr.removeLast()
         }
-        let wrapped = "return (\n\(expr)\n);"
+        let wrapped = "\(TelemetryInstall.prelude())return (\n\(expr)\n);"
         do {
             // `arguments` are bound as JS variables by WebKit (marshaled from native
             // values), so request data reaches the script without being interpolated

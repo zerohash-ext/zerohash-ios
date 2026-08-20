@@ -33,6 +33,9 @@ final class SharedWebViewConfiguration {
         config.websiteDataStore = dataStore
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
+        // Telemetry sink: breadcrumbs from telemetry.js post here. Always registered,
+        // but only receives messages when telemetry is on for the dispatch.
+        config.userContentController.add(TelemetryScriptMessageHandler.shared, name: "zhTelemetry")
         return config
     }
 }

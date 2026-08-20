@@ -370,7 +370,7 @@ final class AutomatedWebViewController: UIViewController, WKNavigationDelegate {
               last == ";" || CharacterSet.whitespacesAndNewlines.contains(last) {
             expr.removeLast()
         }
-        let wrapped = "return (\n\(expr)\n);"
+        let wrapped = "\(TelemetryInstall.prelude())return (\n\(expr)\n);"
         do {
             return try await webView.callAsyncJavaScript(
                 wrapped,

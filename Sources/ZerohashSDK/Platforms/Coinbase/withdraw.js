@@ -259,6 +259,10 @@
   // untouched; promote to shared later if another platform needs them.
   var D = window.__zhDom;
 
+  // Framework-telemetry breadcrumb. No-op unless the native install prelude ran
+  // for this dispatch (i.e. telemetry is on); never carries PII.
+  function bc(phase, note) { if (window.__zhTelemetry) window.__zhTelemetry.breadcrumb(phase, note); }
+
   function isVisible(el) {
     if (!el) return false;
     if (el.offsetParent !== null) return true;
@@ -534,15 +538,39 @@
       || queryVisible(SEL.RECIPIENT_MANUAL_ADDRESS);
   }
 
+  // Type the address and confirm it sticks. Typing before the modal hydrates lets
+  // React clear the field, so retype on a fresh node until the value holds.
+  async function typeRecipientAddress(input, address) {
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      await typeLikeHuman(input, address);
+      await D.sleep(600); // let onChange + any post-hydration re-render settle
+      var live = document.querySelector(SEL.RECIPIENT_INPUT) || input;
+      if (String(live.value || "").trim().length > 0) return live;
+      console.warn("[withdraw] enterRecipient: input cleared after typing (attempt " + attempt + "/3) — likely typed before hydration; retrying");
+      input = live;
+    }
+    throw new Error("withdraw/recipient-input-cleared: the address kept clearing after it was typed (send modal not ready)");
+  }
+
   async function enterRecipient(address) {
     var input = await waitForElement(SEL.RECIPIENT_INPUT, 15000);
-    await typeLikeHuman(input, address);
-    // The dropdown renders async. Match by test id rather than by rendered text —
-    // see recipientRow, and RECIPIENT_MANUAL_ADDRESS's comment for why text
-    // matching cannot work for a starred address.
-    var row = await pollUntil(function () { return recipientRow(address); },
-                             15000, "withdraw/recipient-row-not-found: " + address);
-    await humanClick(row);
+    await D.sleep(300); // brief settle so we're not typing into a still-mounting field
+    input = await typeRecipientAddress(input, address);
+
+    // Clicking the dropdown row advances off the recipient screen. Re-query the row
+    // before each click (a stale node swallows the press) and confirm we advanced.
+    for (var attempt = 1; attempt <= 2; attempt++) {
+      var row = await pollUntil(function () { return recipientRow(address); },
+                               15000, "withdraw/recipient-row-not-found: " + address);
+      await humanClick(row);
+      var advanced = await pollUntil(function () {
+        return queryVisible(SEL.RECIPIENT_INPUT) ? null : true;
+      }, 5000).catch(function () { return null; });
+      if (advanced) return;
+      console.warn("[withdraw] enterRecipient: still on recipient screen after click (attempt " + attempt + "/2); retrying");
+    }
+    // Don't hard-throw: runSelectionPhase's detectNextScreen surfaces a precise
+    // no-next-screen diagnostic if we genuinely never advanced.
   }
 
   // Synchronous button/clickable text scan, scoped to `root`. Mirrors
@@ -810,15 +838,19 @@
 
   // Post-amount recipient-type chooser (some asset/network pairs). No-op when absent.
   async function selectRecipientTypeIfPresent(type) {
-    var step = await waitForElement(SEL.STEP_SELECT_RECIPIENT_TYPE, 10000).catch(function () { return null; });
-    if (!step || !queryVisible(SEL.STEP_SELECT_RECIPIENT_TYPE)) return;
+    // Race the chooser against the screens that replace it (Send now, travel rule,
+    // transfer details). US accounts skip the chooser, so bail if one is already up.
+    var which = await waitForAny(
+      [SEL.STEP_SELECT_RECIPIENT_TYPE, SEL.SEND_NOW, SEL.BENEFICIARY_NAME, SEL.TRANSFER_PURPOSE],
+      10000
+    );
+    if (which !== SEL.STEP_SELECT_RECIPIENT_TYPE) return;
     var selector = RECIPIENT_TYPE_OPTION[type];
     if (!selector) throw new Error("withdraw/recipient-type-option-not-found: " + type);
     // The step container mounts BEFORE its option buttons render, so a single
-    // query races the mount — poll for the option, re-reading the (possibly
-    // re-rendered) step each iteration.
+    // query races the mount — poll for the option, re-reading the step each time.
     var btn = await pollUntil(function () {
-      var s = queryVisible(SEL.STEP_SELECT_RECIPIENT_TYPE) || step;
+      var s = queryVisible(SEL.STEP_SELECT_RECIPIENT_TYPE);
       return s ? s.querySelector(selector) : null;
     }, 5000, "withdraw/recipient-type-option-not-found: " + type);
     await humanClick(btn);
@@ -1264,11 +1296,12 @@
   function past2fa() {
     if (wasTransferCanceled()) return false;
     if (activeGate()) return false;
-    if (queryVisible(SEL.SEND_SUCCESS)) return true;
-    if (queryVisible(SEL.STATUS_COMPLETE_BTN)) return true;
+    // Notes match the extension's past2fa (dom.ts) verbatim.
+    if (queryVisible(SEL.SEND_SUCCESS)) { bc("past2fa:done", "send-success"); return true; }
+    if (queryVisible(SEL.STATUS_COMPLETE_BTN)) { bc("past2fa:done", "complete-btn"); return true; }
     var overlay = document.querySelector(SEL.MODAL_OVERLAY);
-    if (!overlay) return true;
-    if (!queryVisible(SEL.MODAL_OVERLAY)) return true;
+    if (!overlay) { bc("past2fa:done", "overlay-absent"); return true; }
+    if (!queryVisible(SEL.MODAL_OVERLAY)) { bc("past2fa:done", "overlay-hidden"); return true; }
     return false;
   }
 
@@ -1280,6 +1313,7 @@
     // Coinbase may show a method chooser rather than a code field. Picking SMS or
     // TOTP is a click, so it stays out of the pure classifier.
     if (outcome.kind === "otp") chooseOtpMethod();
+    if (outcome.kind === "canceled") bc("risk-gate:canceled");
     return outcome;
   }
 
@@ -1288,14 +1322,19 @@
     try {
       await waitForElement(SEL.SEND_SUCCESS + ", " + SEL.STATUS_COMPLETE_BTN, 60000);
     } catch (e) {
+      bc("result:timeout");
       return { status: "timeout", completeBefore: null, referenceId: null, sendUuid: null };
     }
     var headline = queryVisible(SEL.SUCCESS_HEADLINE);
     var t = headline ? getInnerText(headline).toLowerCase() : "";
     var failureKeywords = ["fail", "error", "cancel", "falh", "erro"];
     var failed = failureKeywords.some(function (kw) { return t.indexOf(kw) !== -1; });
+    // Keep `t` local: the headline can embed the amount/recipient, so never return
+    // or breadcrumb it. Report a bounded status instead.
+    var status = failed ? "failed" : "success";
+    bc("result:success", status);
     return {
-      status: failed ? "failed" : (t || "success"),
+      status: status,
       completeBefore: null, referenceId: null, sendUuid: null
     };
   }
@@ -1538,9 +1577,12 @@
     // Drive Send → forms → preview → "Send now", then detect & return the 2FA state.
     start: async function (params) {
       try {
+        bc("open-send-modal");
         await openSendModal();
+        bc("enter-recipient");
         await enterRecipient(params.address);
         await runSelectionPhase(params);
+        bc("enter-amount");
         await enterAmount(params.amount, params.asset);
         await selectRecipientTypeIfPresent(params.recipientType || "self-custody");
         // Self-transfer: the webapp sends transferDetails.purpose "Transfer to my
@@ -1551,9 +1593,12 @@
           params.transferDetails.purpose === "Transfer to my own account");
         await fillTravelRule(params.travelRule, { selfTransfer: isSelfTransfer });
         await fillTransferDetails(params.transferDetails);
+        bc("confirm-send");
         var details = await confirmAndSend(params.address);
         moduleState().details = details; // persist for continue()
+        bc("detect-2fa");
         var outcome = await detectAndHandle2fa();
+        bc("2fa-outcome", outcome.kind);
         if (outcome.kind === "none") return await finalizeSubmitted(details);
         return toState(outcome, details);
       } catch (e) {
@@ -1583,19 +1628,24 @@
         if (!payload.code || !/^\d{6}$/.test(payload.code)) {
           throw new Error("withdraw/invalid-payload: code (expected 6 digits)");
         }
+        bc("continue:otp");
         var accepted = await enterOtp(payload.code);
         if (!accepted) return { state: "rejected", reason: "otp_rejected" }; // retriable
         var outcome = await detectAndHandle2fa();
+        bc("2fa-outcome", outcome.kind);
         if (outcome.kind === "none") return await finalizeSubmitted(details);
         return toState(outcome, details);
       }
 
       if (payload.kind === "poll") {
+        bc("continue:poll");
         // Same classifier as `start`, shorter budget — so the two cannot drift.
         // Parked at id-verification this returns id-verification every time:
         // Coinbase's risk screen does not advance when the check clears in
         // another app, and zerohash's own systems report the final disposition.
         var polled = await settlePostConfirm(10000);
+        bc("poll-outcome", polled.kind);
+        if (polled.kind === "canceled") bc("risk-gate:canceled");
         if (polled.kind === "otp") chooseOtpMethod();
         if (polled.kind === "none") return await finalizeSubmitted(details);
         return toState(polled, details);

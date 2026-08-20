@@ -93,10 +93,14 @@ struct RequestOptions: Codable, Equatable {
     /// fine; the TRUE default (extension default) is resolved at the router,
     /// not here — keeping this DTO a faithful mirror of the wire shape.
     let initialOverlay: Bool?
+    /// Per-request opt-in for telemetry. Optional so an absent field decodes fine;
+    /// the gate is `TelemetryConfig.enabled || (telemetry ?? false)`.
+    let telemetry: Bool?
 
-    init(overlayOptions: WireOverlayOptions?, initialOverlay: Bool? = nil) {
+    init(overlayOptions: WireOverlayOptions?, initialOverlay: Bool? = nil, telemetry: Bool? = nil) {
         self.overlayOptions = overlayOptions
         self.initialOverlay = initialOverlay
+        self.telemetry = telemetry
     }
 }
 
@@ -137,8 +141,11 @@ struct ZeroAuthResponse: Codable, Equatable {
     /// Whether the front-end may safely retry the same operation
     /// (mirrors `retryable` on the wire ZeroAuthResponse, contract.ts).
     let retryable: Bool
+    /// Telemetry batch on the response. Nil (and omitted from the JSON) when
+    /// telemetry is off, so the reply is unchanged.
+    let telemetry: [JSONValue]?
 
-    init(id: String, success: Bool, data: JSONValue?, error: String?, sessionId: String?, retryable: Bool = false) {
+    init(id: String, success: Bool, data: JSONValue?, error: String?, sessionId: String?, retryable: Bool = false, telemetry: [JSONValue]? = nil) {
         self.id = id
         self.role = WireRole.native
         self.success = success
@@ -146,6 +153,7 @@ struct ZeroAuthResponse: Codable, Equatable {
         self.error = error
         self.sessionId = sessionId
         self.retryable = retryable
+        self.telemetry = telemetry
     }
 }
 

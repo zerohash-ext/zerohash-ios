@@ -47,6 +47,10 @@
   // Generic DOM/timing helpers, injected via window.__zhDom (see dom-helpers.js,
   // prepended by Coinbase.swift). Bound to short locals to keep call sites terse.
   var D = window.__zhDom;
+
+  // Framework-telemetry breadcrumb. No-op unless the native install prelude ran
+  // for this dispatch (i.e. telemetry is on); never carries PII.
+  function bc(phase, note) { if (window.__zhTelemetry) window.__zhTelemetry.breadcrumb(phase, note); }
   var sleep = D.sleep;
   var $ = D.$;
   var realisticClick = D.realisticClick;
@@ -248,9 +252,13 @@
 
   async function run() {
     if (!ASSET) throw new Error("missing_asset");
+    bc("open-modal");
     await openReceiveModal();
+    bc("select-asset", ASSET);
     await pickAsset();
+    bc("select-network", NETWORK);
     await pickNetworkIfNeeded();
+    bc("await-address");
 
     // Race loop: poll for the rendered address, amount-entry step, or deadline.
     // Guard so we fill+submit the amount exactly once: the amount-entry step can
