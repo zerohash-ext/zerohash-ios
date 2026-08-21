@@ -196,26 +196,15 @@ final class AutomationSessionViewController:
 
     // MARK: - WKUIDelegate
 
-    /// Grant camera / microphone capture, but only to Coinbase itself.
-    ///
-    /// Coinbase's identity check is completed by the user inside this WebView, and it
-    /// needs the camera. Without this method the decision is WebKit's default rather
-    /// than ours, so state it explicitly — and scope it, because this WebView carries
-    /// a live Coinbase session and must not hand the camera to anything else.
-    ///
-    /// The origin is checked rather than the frame's URL: a sub-frame could be
-    /// third-party even on a Coinbase page.
-    ///
-    /// The integrating app must declare `NSCameraUsageDescription` and
-    /// `NSMicrophoneUsageDescription`. iOS terminates the process on first capture
-    /// without them, and no SDK-side code can substitute for that.
+    /// Grant the camera/mic to Coinbase or its Onfido liveness iframe. The app must
+    /// declare NSCameraUsageDescription/NSMicrophoneUsageDescription or iOS kills it.
     @available(iOS 15.0, *)
     func webView(_ webView: WKWebView,
                  requestMediaCapturePermissionFor origin: WKSecurityOrigin,
                  initiatedByFrame frame: WKFrameInfo,
                  type: WKMediaCaptureType,
                  decisionHandler: @escaping (WKPermissionDecision) -> Void) {
-        guard origin.protocol == "https", CoinbaseHostPolicy.isTrusted(origin.host) else {
+        guard origin.protocol == "https", MediaCaptureHostPolicy.isTrusted(origin.host) else {
             Log.automation.debug(
                 "media capture DENIED origin=\(origin.host, privacy: .public) type=\(String(describing: type), privacy: .public)")
             decisionHandler(.deny)
