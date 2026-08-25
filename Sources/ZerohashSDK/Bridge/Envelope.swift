@@ -49,8 +49,7 @@ indirect enum JSONValue: Codable, Equatable, Sendable {
 // MARK: - Per-call options (wire DTOs)
 
 /// The JSON-decoding layer for the inbound overlay customization, mirroring
-/// the wire contract `OverlayOptions`
-/// (scraper-browser-extensions/packages/client/src/contract.ts:22-27).
+/// the wire contract `OverlayOptions`.
 ///
 /// This is deliberately separate from `OverlayOptions.Partial`: this type's
 /// only job is to faithfully decode the wire shape (every field optional).

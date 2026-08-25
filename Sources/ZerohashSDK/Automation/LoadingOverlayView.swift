@@ -3,9 +3,8 @@ import UIKit
 /// Full-screen, opaque, Connect-branded loading view that overlays the
 /// automation WebView so the user never sees the underlying Coinbase page.
 ///
-/// This is the native UIKit counterpart of the extension's injected overlay
-/// (scraper-browser-extensions/src/platforms/coinbase/overlay.ts): a white
-/// full-bleed background, a centered three-dot loader (using the three
+/// This is the native UIKit counterpart of the extension's injected overlay: a
+/// white full-bleed background, a centered three-dot loader (using the three
 /// `colors`), a title + subtitle, and a "Powered by <brand>" footer whose
 /// mark is chosen by `options.brand`.
 ///

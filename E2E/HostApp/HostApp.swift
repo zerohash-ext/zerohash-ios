@@ -79,8 +79,11 @@ final class HostViewController: UIViewController {
             onClose: { [weak self] in
                 self?.closedLabel.text = "closed"
             },
-            onFund: { [weak self] event in
-                self?.statusLabel.text = "funded:\(event.success):\(event.status ?? "nil")"
+            onCompleted: { [weak self] event in
+                self?.statusLabel.text = "funded:\(event.transactionId ?? "nil"):\(event.assetSymbol ?? "nil")"
+            },
+            onFailed: { [weak self] event in
+                self?.statusLabel.text = "fund-failed:\(event.transactionId ?? "nil")"
             },
             onError: { [weak self] error in
                 guard let self else { return }

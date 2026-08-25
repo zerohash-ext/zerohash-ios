@@ -46,15 +46,13 @@ public class ZerohashCryptoWithdrawalsSession {
             callbacks: IntegrationsWebViewCallbacks(
                 onClose: callbacks.onClose,
                 onCompleted: { data, jsonString in
-                    callbacks.onWithdrawal?(
-                        CryptoWithdrawalsEvent(
-                            withdrawalRequestId: data["withdrawalRequestId"] as? String,
-                            data: data,
-                            jsonString: jsonString
-                        )
-                    )
+                    callbacks.onCompleted?(CryptoWithdrawalsEvent(from: data, jsonString: jsonString))
+                },
+                onFailed: { data, jsonString in
+                    callbacks.onFailed?(CryptoWithdrawalsEvent(from: data, jsonString: jsonString))
                 },
                 onError: callbacks.onError,
+                onLoaded: callbacks.onLoaded,
                 onEvent: callbacks.onEvent
             )
         )

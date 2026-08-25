@@ -46,7 +46,7 @@ public class ZerohashFundWithdrawalsSession {
             callbacks: IntegrationsWebViewCallbacks(
                 onClose: callbacks.onClose,
                 onCompleted: { data, jsonString in
-                    callbacks.onWithdrawal?(
+                    callbacks.onCompleted?(
                         FundWithdrawalsEvent(
                             externalAccountId: data["externalAccountId"] as? String,
                             assetSymbol: data["assetSymbol"] as? String,
@@ -57,6 +57,7 @@ public class ZerohashFundWithdrawalsSession {
                     )
                 },
                 onError: callbacks.onError,
+                onLoaded: callbacks.onLoaded,
                 onEvent: callbacks.onEvent
             )
         )

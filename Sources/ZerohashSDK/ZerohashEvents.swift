@@ -1,50 +1,10 @@
 import Foundation
 
-// MARK: - Callbacks
+// MARK: - Shared Events
 
-public struct ZerohashCallbacks {
-    public var onClose: (() -> Void)?
-    public var onDeposit: ((DepositEvent) -> Void)?
-    public var onError: ((ErrorEvent) -> Void)?
-    public var onEvent: ((GenericEvent) -> Void)?
-
-    public init(
-        onClose: (() -> Void)? = nil,
-        onDeposit: ((DepositEvent) -> Void)? = nil,
-        onError: ((ErrorEvent) -> Void)? = nil,
-        onEvent: ((GenericEvent) -> Void)? = nil
-    ) {
-        self.onClose = onClose
-        self.onDeposit = onDeposit
-        self.onError = onError
-        self.onEvent = onEvent
-    }
-}
-
-// MARK: - Events
-
-public struct DepositEvent {
-    public let depositId: String?
-    public let status: String?
-    public let success: Bool
-    public let assetId: String?
-    public let networkId: String?
-    public let amount: String?
-    public let data: [String: Any]
-    public let jsonString: String
-
-    public init(from data: [String: Any], jsonString: String = "") {
-        self.data = data
-        self.jsonString = jsonString
-        self.depositId = data["depositId"] as? String
-        self.status = data["status"] as? String
-        self.success = data["success"] as? Bool ?? false
-        self.assetId = data["assetId"] as? String
-        self.networkId = data["networkId"] as? String
-        self.amount = data["amount"] as? String
-    }
-}
-
+/// An SDK or request error: network, auth, validation, config. Distinct from a
+/// flow's own terminal failure, which arrives on `onFailed` with the
+/// transaction's details instead.
 public struct ErrorEvent {
     public let code: String
     public let message: String
@@ -61,6 +21,8 @@ public struct ErrorEvent {
     }
 }
 
+/// Catch-all for the flow's lifecycle/analytics events. `type` carries the
+/// original event identifier and `data` its payload.
 public struct GenericEvent {
     public let type: String
     public let data: [String: Any]

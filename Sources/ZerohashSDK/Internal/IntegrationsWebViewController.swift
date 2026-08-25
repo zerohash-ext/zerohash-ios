@@ -291,6 +291,9 @@ class IntegrationsWebViewController: UIViewController,
 
     func messageHandlerDidReceiveContentReady(_ handler: IntegrationsWebViewMessageHandler) {
         loadingManager.transitionToWebView(webView: webView)
+        callbacks.onLoaded?()
+        // Also emitted as a generic event for hosts that were reading APP_LOADED
+        // off `onEvent` before `onLoaded` existed.
         let event = GenericEvent(type: "APP_LOADED", data: [:])
         callbacks.onEvent?(event)
     }
@@ -345,6 +348,17 @@ class IntegrationsWebViewController: UIViewController,
         callbacks.onCompleted?(data, jsonString)
     }
 
+    /// Status of a deposit funded from an external source. Kept off the completion
+    /// sink on purpose: the deposit may still be verifying, or may have failed, so
+    /// the host reads the outcome off the status rather than being told it arrived.
+    func messageHandlerDidReceiveDepositStatus(
+        _ handler: IntegrationsWebViewMessageHandler,
+        data: [String: Any],
+        jsonString: String
+    ) {
+        callbacks.onDepositStatus?(data, jsonString)
+    }
+
     /// Withdrawal counterpart to `deposit`. The mobile web app posts
     /// `crypto-withdrawal` for the crypto-withdrawals route; both land on the
     /// same completion sink.
@@ -365,6 +379,16 @@ class IntegrationsWebViewController: UIViewController,
         jsonString: String
     ) {
         callbacks.onCompleted?(data, jsonString)
+    }
+
+    /// Terminal failure for either flow. Routed to its own sink so the session
+    /// can fire `onFailed` rather than folding it into `onError`.
+    func messageHandlerDidReceiveTransactionFailed(
+        _ handler: IntegrationsWebViewMessageHandler,
+        data: [String: Any],
+        jsonString: String
+    ) {
+        callbacks.onFailed?(data, jsonString)
     }
 
     func messageHandler(

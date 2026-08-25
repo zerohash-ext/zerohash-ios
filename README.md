@@ -54,7 +54,7 @@ Add ZerohashSDK as a dependency in your `Package.swift` file:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/zerohash-ext/zerohash-ios", from: "1.0.0")
+    .package(url: "https://github.com/zerohash-ext/zerohash-ios", .upToNextMinor(from: "1.2.0"))
 ]
 ```
 
@@ -89,8 +89,8 @@ and carries the permissions for the flow you're presenting.
 
 ### Fund
 
-The Fund app handles account funding and pay-to-settle. Use `onFund` to
-react to deposit events.
+The Fund app handles account funding and pay-to-settle. Use `onCompleted` and
+`onFailed` to react to the deposit's terminal outcome.
 
 ```swift
 import UIKit
@@ -106,15 +106,16 @@ class FundViewController: UIViewController {
             onError: { error in
                 print("Fund error \(error.code): \(error.message)")
             },
+            onLoaded: { print("Fund ready") },
             onEvent: { event in
                 print("Fund event: \(event.type)")
             },
-            onFund: { fund in
-                if fund.success {
-                    print("Deposit processed — status: \(fund.status ?? "unknown")")
-                } else {
-                    print("Deposit status: \(fund.status ?? "unknown")")
-                }
+            onCompleted: { fund in
+                print("Deposited \(fund.amount ?? "?") \(fund.assetSymbol ?? "?")")
+                print("Transaction: \(fund.transactionId ?? "unknown")")
+            },
+            onFailed: { fund in
+                print("Deposit failed: \(fund.transactionId ?? "unknown")")
             }
         )
 
@@ -133,8 +134,8 @@ class FundViewController: UIViewController {
 ### Crypto Withdrawals
 
 The Crypto Withdrawals app walks the end user through withdrawing a crypto
-asset to an external address. Use `onWithdrawal` to react to the completed
-withdrawal.
+asset to an external address. Use `onCompleted` and `onFailed` to react to the
+withdrawal's terminal outcome.
 
 ```swift
 import UIKit
@@ -147,12 +148,16 @@ class WithdrawalsViewController: UIViewController {
     @IBAction func startWithdrawalTapped(_ sender: UIButton) {
         let callbacks = CryptoWithdrawalsCallbacks(
             onClose: { print("Crypto Withdrawals closed") },
-            onWithdrawal: { withdrawal in
+            onCompleted: { withdrawal in
                 print("Withdrawal submitted: \(withdrawal.withdrawalRequestId ?? "unknown")")
+            },
+            onFailed: { withdrawal in
+                print("Withdrawal failed: \(withdrawal.withdrawalRequestId ?? "unknown")")
             },
             onError: { error in
                 print("Crypto Withdrawals error \(error.code): \(error.message)")
             },
+            onLoaded: { print("Crypto Withdrawals ready") },
             onEvent: { event in
                 print("Crypto Withdrawals event: \(event.type)")
             }
@@ -173,7 +178,7 @@ class WithdrawalsViewController: UIViewController {
 ### Fund Withdrawals
 
 The Fund Withdrawals app walks the end user through withdrawing funds to a
-linked (Auth connection) destination. Use `onWithdrawal` to react to the
+linked (Auth connection) destination. Use `onCompleted` to react to the
 completed withdrawal.
 
 ```swift
@@ -187,7 +192,7 @@ class FundWithdrawalsViewController: UIViewController {
     @IBAction func startFundWithdrawalTapped(_ sender: UIButton) {
         let callbacks = FundWithdrawalsCallbacks(
             onClose: { print("Fund Withdrawals closed") },
-            onWithdrawal: { withdrawal in
+            onCompleted: { withdrawal in
                 print("Withdrawal initiated: \(withdrawal.amount ?? "unknown") \(withdrawal.assetSymbol ?? "")")
             },
             onError: { error in
@@ -302,9 +307,12 @@ enum Theme {
 ```swift
 struct FundCallbacks {
     var onClose: (() -> Void)?
+    var onCompleted: ((FundEvent) -> Void)?
+    var onFailed: ((FundEvent) -> Void)?
+    var onDeposit: ((FundDepositEvent) -> Void)?
     var onError: ((ErrorEvent) -> Void)?
+    var onLoaded: (() -> Void)?
     var onEvent: ((GenericEvent) -> Void)?
-    var onFund: ((FundEvent) -> Void)?
 }
 ```
 
@@ -313,8 +321,10 @@ struct FundCallbacks {
 ```swift
 struct CryptoWithdrawalsCallbacks {
     var onClose: (() -> Void)?
-    var onWithdrawal: ((CryptoWithdrawalsEvent) -> Void)?
+    var onCompleted: ((CryptoWithdrawalsEvent) -> Void)?
+    var onFailed: ((CryptoWithdrawalsEvent) -> Void)?
     var onError: ((ErrorEvent) -> Void)?
+    var onLoaded: (() -> Void)?
     var onEvent: ((GenericEvent) -> Void)?
 }
 ```
@@ -324,38 +334,102 @@ struct CryptoWithdrawalsCallbacks {
 ```swift
 struct FundWithdrawalsCallbacks {
     var onClose: (() -> Void)?
-    var onWithdrawal: ((FundWithdrawalsEvent) -> Void)?
+    var onCompleted: ((FundWithdrawalsEvent) -> Void)?
     var onError: ((ErrorEvent) -> Void)?
+    var onLoaded: (() -> Void)?
     var onEvent: ((GenericEvent) -> Void)?
 }
 ```
 
+> Callback names match the zerohash web SDK, so the same handler names apply
+> whether you integrate on web, iOS or Android. The flow is identified by the
+> session type, not the callback name.
+>
+> Fund Withdrawals has no `onFailed`: it cannot detect a failure once the
+> withdrawal is submitted, so nothing in the stack reports one. A pre-submission
+> problem arrives on `onError`.
+
 ## Callbacks and Events
 
-### onFund
+### onCompleted / onFailed
 
-Called when a fund event occurs during the Fund flow.
+The flow's terminal outcome. `onCompleted` fires when the transaction succeeded,
+`onFailed` when it ended in a failed state. Both receive the same event type —
+which callback fired tells you the outcome, so there is no status field to check.
+
+A failed transaction is a flow outcome, **not** an error. Handle both if you need
+to cover every unsuccessful path.
+
+The two flows differ in one respect. A failed **deposit** (Fund) fires `onFailed`
+only. A failed **crypto withdrawal** fires `onFailed` *and* `onError`, for
+backwards compatibility with hosts written before `onFailed` existed — `onError`
+was that flow's only failure signal. Build against `onFailed` in both cases; if
+you handle both callbacks, guard against counting a failed withdrawal twice. The
+compatibility `onError` is deprecated and will be removed in a future major
+version.
+
+Fund (`FundEvent`):
 
 ```swift
-fund.success      // Bool    — true when the deposit was processed
-fund.status       // String? — current deposit status
-fund.data         // [String: Any] — raw event payload
-fund.jsonString   // String  — raw JSON string
+fund.depositAddress   // String? — deposit address for the asset
+fund.network          // String? — network used for the deposit
+fund.assetSymbol      // String? — asset symbol (e.g. "BTC.BITCOIN")
+fund.amount           // String? — amount deposited
+fund.transactionId    // String? — backend transaction id
+fund.fundId           // String? — fund the deposit was credited to
+fund.notionalAmount   // String? — notional (fiat) amount
+fund.data             // [String: Any] — raw event payload
+fund.jsonString       // String  — raw JSON string
+fund.getString("key") // String?  (also getInt/getBool/getDouble/getObject)
 ```
 
-### onWithdrawal
+### onDeposit (Fund only)
 
-Called when the Crypto Withdrawals flow submits a withdrawal.
+A deposit funded from an **external source** (the "connect an account" path) does
+not reach `onCompleted`/`onFailed` at all. It reports on `onDeposit`, with a
+`FundDepositEvent` — matching `onDeposit` on the Fund web SDK.
+
+`onDeposit` is a **status, not an outcome**. It also fires while account matching is
+verifying, and can arrive more than once for the same deposit, so do not treat the
+call itself as completion:
 
 ```swift
-withdrawal.withdrawalRequestId       // String? — withdrawal request ID returned by the API
-withdrawal.data                      // [String: Any] — raw event payload
-withdrawal.jsonString                // String  — raw JSON string
-withdrawal.getString("key")          // String?
+deposit.depositId              // String? — unique identifier for the deposit
+deposit.status                 // String? — "PROCESSED", "FAILED", "PENDING", ...
+deposit.statusDetails          // String? — human-readable detail for the status
+deposit.statusOccurredAt       // String? — when it occurred (ISO 8601)
+deposit.success                // Bool    — true once processed; false while pending or failed
+deposit.assetId                // String? — asset identifier (e.g. "USDC")
+deposit.networkId              // String? — network identifier (e.g. "ethereum")
+deposit.amount                 // String? — amount deposited
+deposit.accountMatchingStatus  // String? — "PENDING", "VALID", "INVALID", "ERROR"
+deposit.accountMatchingReason  // String? — why account matching failed
+deposit.data                   // [String: Any] — raw event payload
+deposit.jsonString             // String  — raw JSON string
 ```
 
-The Fund Withdrawals flow uses the same `onWithdrawal` callback with a
-`FundWithdrawalsEvent`:
+On a name mismatch, `accountMatchingReason` is the only explanation available
+anywhere in the stack, so prefer it over reporting a bare id.
+
+A manual or Pay deposit is unaffected: it is terminal, and reaches
+`onCompleted`/`onFailed` with all seven `FundEvent` fields as listed above.
+
+Crypto Withdrawals (`CryptoWithdrawalsEvent`):
+
+```swift
+withdrawal.withdrawalRequestId  // String? — withdrawal request ID returned by the API
+withdrawal.status               // String? — terminal status, e.g. "CONFIRMED" or "FAILED"
+withdrawal.statusDetails        // String? — why; on a failure this is the only explanation available
+withdrawal.assetId              // String? — asset identifier (e.g. "btc")
+withdrawal.networkId            // String? — network identifier (e.g. "bitcoin")
+withdrawal.amount               // String? — amount withdrawn
+withdrawal.data                 // [String: Any] — raw event payload
+withdrawal.jsonString           // String  — raw JSON string
+withdrawal.getString("key")     // String?  (also getInt/getBool/getDouble/getObject)
+```
+
+Fund Withdrawals (`FundWithdrawalsEvent`), delivered to `onCompleted`. This flow
+has no `onFailed`:
 
 ```swift
 withdrawal.externalAccountId         // String? — resolved destination account
@@ -366,9 +440,21 @@ withdrawal.jsonString                // String  — raw JSON string
 withdrawal.getString("key")          // String?
 ```
 
+### onLoaded
+
+Called once the flow's WebView content is ready — specifically when the web
+component has mounted in the page. The same moment is also emitted through
+`onEvent` as `APP_LOADED`.
+
+Note this is **earlier** than the web SDK's `onLoaded`, which fires when the flow
+itself has booted and rendered. The web layer's own ready signal is not currently
+forwarded over the bridge, so do not treat this as "the user can see the flow" —
+dismissing a loading spinner here can uncover a still-blank WebView.
+
 ### onError
 
-Called when an error occurs during the flow.
+Called when an SDK or request error occurs (network, auth, validation, config).
+Terminal transaction failures arrive on `onFailed` instead.
 
 ```swift
 error.code        // String — error code

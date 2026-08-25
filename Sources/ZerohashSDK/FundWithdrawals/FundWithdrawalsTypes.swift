@@ -2,21 +2,35 @@ import Foundation
 
 // MARK: - FundWithdrawalsCallbacks
 
+/// Host callbacks for the fund-withdrawals flow.
+///
+/// Names match the zerohash web SDK's callback contract so a partner integrating
+/// on web and native writes the same handlers. The flow is identified by the
+/// session type, not by the callback name.
+///
+/// There is no `onFailed`. This flow cannot detect a failure once the withdrawal
+/// is submitted, so no surface in the stack reports one; a pre-submission problem
+/// arrives on `onError`.
 public struct FundWithdrawalsCallbacks {
     public var onClose: (() -> Void)?
-    public var onWithdrawal: ((FundWithdrawalsEvent) -> Void)?
+    /// The withdrawal was submitted successfully.
+    public var onCompleted: ((FundWithdrawalsEvent) -> Void)?
     public var onError: ((ErrorEvent) -> Void)?
+    /// The flow finished loading and is ready.
+    public var onLoaded: (() -> Void)?
     public var onEvent: ((GenericEvent) -> Void)?
 
     public init(
         onClose: (() -> Void)? = nil,
-        onWithdrawal: ((FundWithdrawalsEvent) -> Void)? = nil,
+        onCompleted: ((FundWithdrawalsEvent) -> Void)? = nil,
         onError: ((ErrorEvent) -> Void)? = nil,
+        onLoaded: (() -> Void)? = nil,
         onEvent: ((GenericEvent) -> Void)? = nil
     ) {
         self.onClose = onClose
-        self.onWithdrawal = onWithdrawal
+        self.onCompleted = onCompleted
         self.onError = onError
+        self.onLoaded = onLoaded
         self.onEvent = onEvent
     }
 }

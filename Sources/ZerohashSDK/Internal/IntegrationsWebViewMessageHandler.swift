@@ -12,6 +12,18 @@ protocol IntegrationsWebViewMessageHandlerDelegate: AnyObject {
         _ handler: IntegrationsWebViewMessageHandler, data: [String: Any], jsonString: String)
     func messageHandlerDidReceiveCryptoWithdrawal(
         _ handler: IntegrationsWebViewMessageHandler, data: [String: Any], jsonString: String)
+    /// Status of a deposit funded from an external source, posted as
+    /// `deposit-status`. Its own message type because `deposit` already means the
+    /// deposit *completed* — a status there would report that the money arrived
+    /// while the deposit is still verifying, or has failed. Non-terminal: it can
+    /// arrive more than once per deposit.
+    func messageHandlerDidReceiveDepositStatus(
+        _ handler: IntegrationsWebViewMessageHandler, data: [String: Any], jsonString: String)
+    /// A terminal *failed* transaction, posted by the mobile web app as
+    /// `transaction-failed`. Distinct from `didReceiveError`: this is the flow's
+    /// own outcome and carries the transaction's details, not an error payload.
+    func messageHandlerDidReceiveTransactionFailed(
+        _ handler: IntegrationsWebViewMessageHandler, data: [String: Any], jsonString: String)
     func messageHandlerDidReceiveFundWithdrawal(
         _ handler: IntegrationsWebViewMessageHandler, data: [String: Any], jsonString: String)
     func messageHandler(
@@ -26,9 +38,10 @@ protocol IntegrationsWebViewMessageHandlerDelegate: AnyObject {
         _ handler: IntegrationsWebViewMessageHandler, didReceiveAutomationRequest request: ZeroAuthRequest)
 }
 
-/// Bridge contract matches the zerohash mobile web app (`apps/mobile`):
+/// Bridge contract matches the zerohash mobile web app:
 /// inbound (web→native) `page-ready`, `content-ready`, `navigate`, `close`,
-/// `error`, `event`, `deposit`, `crypto-withdrawal`, `fund-withdrawal`;
+/// `error`, `event`, `deposit`, `deposit-status`, `crypto-withdrawal`,
+/// `fund-withdrawal`, `transaction-failed`;
 /// outbound (native→web) `jwt`, `config`.
 class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegate,
     WKUIDelegate
@@ -315,6 +328,10 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
             let data = jsonObject["data"] as? [String: Any] ?? [:]
             delegate?.messageHandlerDidReceiveDeposit(self, data: data, jsonString: jsonString)
 
+        case "deposit-status":
+            let data = jsonObject["data"] as? [String: Any] ?? [:]
+            delegate?.messageHandlerDidReceiveDepositStatus(self, data: data, jsonString: jsonString)
+
         case "crypto-withdrawal":
             let data = jsonObject["data"] as? [String: Any] ?? [:]
             delegate?.messageHandlerDidReceiveCryptoWithdrawal(self, data: data, jsonString: jsonString)
@@ -322,6 +339,10 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
         case "fund-withdrawal":
             let data = jsonObject["data"] as? [String: Any] ?? [:]
             delegate?.messageHandlerDidReceiveFundWithdrawal(self, data: data, jsonString: jsonString)
+
+        case "transaction-failed":
+            let data = jsonObject["data"] as? [String: Any] ?? [:]
+            delegate?.messageHandlerDidReceiveTransactionFailed(self, data: data, jsonString: jsonString)
 
         case "close":
             delegate?.messageHandlerDidReceiveClose(self)

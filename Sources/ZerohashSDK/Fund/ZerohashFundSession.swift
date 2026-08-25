@@ -43,16 +43,18 @@ public class ZerohashFundSession {
                 // Fund completes a deposit; the bridge hands back the raw payload
                 // and this session types it as a `FundEvent`.
                 onCompleted: { [callbacks] data, jsonString in
-                    callbacks.onFund?(
-                        FundEvent(
-                            success: true,
-                            status: data["status"] as? String ?? "completed",
-                            data: data,
-                            jsonString: jsonString
-                        )
-                    )
+                    callbacks.onCompleted?(FundEvent(from: data, jsonString: jsonString))
+                },
+                onFailed: { [callbacks] data, jsonString in
+                    callbacks.onFailed?(FundEvent(from: data, jsonString: jsonString))
+                },
+                // A status rather than an outcome, so it gets its own event type
+                // and never touches onCompleted/onFailed.
+                onDepositStatus: { [callbacks] data, jsonString in
+                    callbacks.onDeposit?(FundDepositEvent(from: data, jsonString: jsonString))
                 },
                 onError: callbacks.onError,
+                onLoaded: callbacks.onLoaded,
                 onEvent: callbacks.onEvent
             )
         )

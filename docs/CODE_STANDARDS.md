@@ -139,26 +139,32 @@ public enum Theme: String {
 
 ```
 Sources/ZerohashSDK/
-├── ZerohashSDK.swift
-├── ZerohashSDKTypes.swift
-├── ZerohashEvents.swift
-├── ZerohashSession.swift
+├── ZerohashSDK.swift          # public entry point (configureFund, configureCryptoWithdrawals)
+├── ZerohashSDKTypes.swift     # Environment, Theme
+├── ZerohashEvents.swift       # ErrorEvent, GenericEvent (shared across flows)
 ├── Fund/
-│   ├── FundTypes.swift
-│   ├── FundWebViewMessageHandler.swift
-│   ├── FundWebViewController.swift
+│   ├── FundTypes.swift        # FundCallbacks, FundEvent
 │   └── ZerohashFundSession.swift
-├── UI/
-│   ├── Components/
-│   │   └── WebViewLoadingManager.swift
-│   ├── ViewControllers/
-│   │   └── SubViewController.swift
-│   └── Theme/
-│       └── ThemeHelper.swift
-└── Internal/
-    ├── Constants.swift
-    └── Log.swift
+├── CryptoWithdrawals/
+│   ├── CryptoWithdrawalsTypes.swift
+│   └── ZerohashCryptoWithdrawalsSession.swift
+├── Internal/                  # shared mobile-web bridge, one copy for all flows
+│   ├── IntegrationsWebViewCallbacks.swift
+│   ├── IntegrationsWebViewController.swift
+│   ├── IntegrationsWebViewMessageHandler.swift
+│   ├── Constants.swift
+│   └── Log.swift
+├── Automation/                # ZeroAuth scraping session + overlays
+├── Bridge/                    # envelope decoding, execution context
+├── Platforms/                 # per-platform scraping flows (Coinbase, …)
+└── UI/
+    ├── Components/
+    ├── ViewControllers/
+    └── Theme/
 ```
+
+Each flow owns only its public callback/event types and a session class; the
+WebView bridge lives once in `Internal/` and is flow-agnostic.
 
 ### File Naming
 - **PascalCase:** `WebViewMessageHandler.swift`

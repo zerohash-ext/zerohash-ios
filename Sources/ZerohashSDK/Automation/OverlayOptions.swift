@@ -1,8 +1,7 @@
 import Foundation
 
 /// The three dot-fill colors of the loading overlay, as CSS hex strings
-/// (e.g. `"#FCFC99"`). Mirrors the wire contract `OverlayColors`
-/// (scraper-browser-extensions/packages/client/src/contract.ts).
+/// (e.g. `"#FCFC99"`). Mirrors the wire contract `OverlayColors`.
 public struct OverlayColors: Equatable, Sendable {
     public let left: String
     public let middle: String
@@ -85,7 +84,7 @@ public struct OverlayOptions: Equatable, Sendable {
     }
 
     /// The effective defaults applied when a field is omitted. Mirrors
-    /// `DEFAULT_OVERLAY_OPTIONS` (scraper-browser-extensions/src/core/types.ts)
+    /// `DEFAULT_OVERLAY_OPTIONS`
     /// byte-for-byte — including the curly apostrophe (U+2019) in the subtitle.
     /// The default palette comes from `Brand.default` (connect).
     public static let `default` = OverlayOptions(
@@ -121,7 +120,7 @@ public struct OverlayOptions: Equatable, Sendable {
     }
 
     /// Resolve a (possibly nil/partial) caller input against the defaults,
-    /// mirroring `resolveOverlayOptions` (scraper-browser-extensions/src/core/types.ts:203):
+    /// mirroring `resolveOverlayOptions`:
     ///
     /// - `titles` / `subtitles`: a non-empty array wins; an empty array or
     ///   `nil` falls back to the default (matching the TS `?.length` check).
