@@ -173,6 +173,17 @@ public struct PendingTransfer: Codable, Equatable, Sendable {
     }
 }
 
+public struct FundsAvailability: Codable, Equatable, Sendable {
+    public let asset: String?
+    public let availableToSend: String?
+    public let availableToSendFiat: String?
+    public init(asset: String?, availableToSend: String?, availableToSendFiat: String?) {
+        self.asset = asset
+        self.availableToSend = availableToSend
+        self.availableToSendFiat = availableToSendFiat
+    }
+}
+
 /// The `submitted` terminal payload — the `result` object in the
 /// `submitted` arm of `WithdrawState`.
 public struct WithdrawSubmittedResult: Codable, Equatable, Sendable {
@@ -210,6 +221,7 @@ public enum WithdrawRejectReason {
     /// disabled or "No compatible assets". Terminal + user-actionable (a different
     /// asset or address).
     public static let addressUnsupported = "address_unsupported"
+    public static let fundsNotAvailable = "funds_not_available"
 }
 
 /// State returned at every pause/terminal point of a withdraw session — a
@@ -224,10 +236,14 @@ public enum WithdrawState: Codable, Equatable, Sendable {
     case awaitingUserActionIdVerification(details: WithdrawDetails, completeBefore: String?)
     case processing(details: WithdrawDetails)
     case submitted(result: WithdrawSubmittedResult)
-    case rejected(reason: String, pendingTransfer: PendingTransfer?)
+    case rejected(
+        reason: String,
+        pendingTransfer: PendingTransfer?,
+        fundsAvailability: FundsAvailability? = nil)
 
     private enum CodingKeys: String, CodingKey {
-        case state, kind, details, completeBefore, result, reason, pendingTransfer
+        case state, kind, details, completeBefore, result, reason
+        case pendingTransfer, fundsAvailability
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -262,11 +278,12 @@ public enum WithdrawState: Codable, Equatable, Sendable {
             try c.encode("submitted", forKey: .state)
             try c.encode(result, forKey: .result)
 
-        case .rejected(let reason, let pendingTransfer):
+        case .rejected(let reason, let pendingTransfer, let fundsAvailability):
             try c.encode("rejected", forKey: .state)
             try c.encode(reason, forKey: .reason)
             // `pendingTransfer?` is an optional key — omit when absent.
             try c.encodeIfPresent(pendingTransfer, forKey: .pendingTransfer)
+            try c.encodeIfPresent(fundsAvailability, forKey: .fundsAvailability)
         }
     }
 
@@ -301,7 +318,9 @@ public enum WithdrawState: Codable, Equatable, Sendable {
         case "rejected":
             self = .rejected(
                 reason: try c.decode(String.self, forKey: .reason),
-                pendingTransfer: try c.decodeIfPresent(PendingTransfer.self, forKey: .pendingTransfer))
+                pendingTransfer: try c.decodeIfPresent(PendingTransfer.self, forKey: .pendingTransfer),
+                fundsAvailability: try c.decodeIfPresent(
+                    FundsAvailability.self, forKey: .fundsAvailability))
 
         default:
             throw DecodingError.dataCorruptedError(
@@ -319,7 +338,7 @@ public extension WithdrawState {
         switch self {
         case .submitted:
             return true
-        case .rejected(let reason, _):
+        case .rejected(let reason, _, _):
             return reason != WithdrawRejectReason.otpRejected
         case .awaitingInputOtp, .awaitingUserActionPasskey,
              .awaitingUserActionIdVerification, .processing:
