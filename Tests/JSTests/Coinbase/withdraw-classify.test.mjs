@@ -190,17 +190,24 @@ test("a session that saw a hold reports the hold, not processing", () => {
   );
 });
 
-// A repeated poll that lands mid-fade: the risk container is up but its buttons
-// have not rendered, so nothing is decisive. Only the sticky guard can answer, and
-// it must still say "hold" rather than falling through to processing.
-//
-// Do NOT add startChallenge here. With it, the decisive branch fires first and the
-// sticky guard is never reached — the test then passes even if the guard is deleted
-// outright, which is exactly how it was originally written.
 test("a repeated poll mid-fade still reports the hold", () => {
   assert.deepStrictEqual(
     classify({ riskStep: true, scamIntro: true, sawIdVerification: true, budgetExpired: true }),
     { kind: "id-verification", settled: true }
+  );
+});
+
+test("the scam warning reports the hold on budget expiry, not processing", () => {
+  assert.deepStrictEqual(
+    classify({ riskStep: true, scamIntro: true, overlay: true, budgetExpired: true }),
+    { kind: "id-verification", settled: true }
+  );
+});
+
+test("a scam intro outside the risk container does not become a hold", () => {
+  assert.deepStrictEqual(
+    classify({ scamIntro: true, overlay: true, budgetExpired: true }),
+    { kind: "processing", settled: true }
   );
 });
 

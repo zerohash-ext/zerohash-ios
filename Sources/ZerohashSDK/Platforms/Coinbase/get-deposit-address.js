@@ -13,8 +13,7 @@
   // Coinbase mobile-web Receive entry (see openReceiveModal): the global
   // actions CTA opens a tray; the "Receive crypto" row has no testid, so we
   // anchor on its down-arrow icon. Clicking it advances to the asset selector.
-  var GLOBAL_ACTIONS_CTA = '[data-testid="global-actions-cta-wrapper"]';
-  var RECEIVE_ROW_ICON = '[data-icon-name="arrowDown"]';
+  var RECEIVE_URL = "https://www.coinbase.com/receive";
   var ASSET_SELECTION_STEP = '[data-testid="step-assetSelection-active"]';
   var NETWORK_WARNING_UNDERSTAND = '[data-testid="network-warning-step-understand"]';
   var LIGHTNING_NUX_STEP = '[data-testid="step-lightningReceiveNuxStep-active"]';
@@ -61,29 +60,14 @@
   function waitUntil(find, timeoutMs) { return D.waitUntil(find, timeoutMs, DEADLINE); }
   function waitFor(sel, timeoutMs) { return D.waitFor(sel, timeoutMs, DEADLINE); }
 
+  // Landing on /receive mounts the asset-selection step directly. The tray
+  // click-through is gone rather than kept as a fallback: it existed only to reach
+  // this step from /trade, and keeping it would let a Coinbase change that stops
+  // /receive mounting route silently back onto a path built from a generated-class
+  // div with no testid. Fails loudly instead, naming what it waited for.
   async function openReceiveModal() {
-    // Coinbase mobile web has no Receive quick-action tile. The Receive flow is
-    // reached by opening the "global actions" CTA, which presents a tray whose
-    // "Receive crypto" row is a generated-class div with no testid — its only
-    // stable, locale-proof anchor is the down-arrow icon (RECEIVE_ROW_ICON).
-    // After clicking it the page advances to step-assetSelection-active, where
-    // the existing ReceiveAssetSelectorCell-* selectors take over.
-    //
-    // Each stage throws a distinct error suffix so a failure log pinpoints
-    // which step broke (CTA absent vs tray row absent vs step didn't advance).
-    var cta = await waitUntil(function () { return $(GLOBAL_ACTIONS_CTA); }, 10000);
-    if (!cta) throw new Error("receive_entry_not_found:cta");
-    // The CTA wrapper is a <div>; the real interactive element is the button
-    // inside it (matches the manual repro). Click the inner control, not the div.
-    var ctaBtn = cta.querySelector("button, [role='button'], a") || cta;
-    realisticClick(ctaBtn);
-
-    var icon = await waitUntil(function () { return $(RECEIVE_ROW_ICON); }, 5000);
-    if (!icon) throw new Error("receive_entry_not_found:row");
-    realisticClick(clickableAncestor(icon));
-
-    var step = await waitUntil(function () { return $(ASSET_SELECTION_STEP); }, 6000);
-    if (!step) throw new Error("receive_entry_not_found:step");
+    var step = await waitUntil(function () { return $(ASSET_SELECTION_STEP); }, 10000);
+    if (!step) throw new Error("receive_entry_not_found:step " + RECEIVE_URL);
   }
 
   function visibleAssets() {

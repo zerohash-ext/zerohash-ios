@@ -22,6 +22,7 @@ let package = Package(
                 .process("Resources/Media.xcassets"),
                 .process("Automation/dom-helpers.js"),
                 .process("Automation/telemetry.js"),
+                .process("Automation/setup-execution-context.js"),
                 .process("Platforms/Coinbase/auth-status.js"),
                 .process("Platforms/Coinbase/auth-detect-unsupported-2fa.js"),
                 .process("Platforms/Coinbase/auth-signup.js"),

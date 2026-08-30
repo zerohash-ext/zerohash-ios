@@ -139,7 +139,7 @@ public struct Coinbase: AuthFlow, DepositFlow, BalanceFlow, WithdrawFlow {
         let script = "(function(){ \(Self.domHelpersJS); return (\(automation)); })()"
 
         let raw = try await ctx.runVisibleWebView(
-            url: URL(string: "https://www.coinbase.com/trade")!,
+            url: URL(string: "https://www.coinbase.com/receive")!,
             settle: { url in
                 switch url.host {
                 case "www.coinbase.com": return .evaluate
@@ -286,11 +286,16 @@ public struct Coinbase: AuthFlow, DepositFlow, BalanceFlow, WithdrawFlow {
     // Presents a long-lived automation session, drives the bundled `withdraw.js`
     // via `evaluateAsync`, and maps the returned object into a typed `WithdrawState`.
 
-    /// Surface the withdraw/send flow runs on (coinbase.com/home) — also the
-    /// surface the SDK's working `auth.status` loads. (The deposit flow uses /trade
-    /// as its own tweak, but /trade was observed not to settle in the modal; /home
-    /// is proven here.)
-    static let withdrawURL = URL(string: "https://www.coinbase.com/home")!
+    /// Surface the withdraw/send flow runs on. `/send` mounts the recipient step
+    /// directly, which skips the dashboard and its intermittent promo banner —
+    /// that banner could overlay the send control and stall the opener for its
+    /// whole budget on a page that looked idle.
+    ///
+    /// `withdraw.js` races the mounted step against the dashboard triggers, so if
+    /// Coinbase serves the dashboard here instead the click-through still runs.
+    /// That fallback is not decoration: `/trade` was observed not to settle in this
+    /// WebView, so no Coinbase route is assumed to mount cleanly.
+    static let withdrawURL = URL(string: "https://www.coinbase.com/send")!
 
     @MainActor
     public func startWithdraw(

@@ -13,13 +13,8 @@
   var STEP_ACTIVE = '[data-testid^="step-"][data-testid$="-active"]';
 
   // Send modal entry + recipient
-  var QUICK_ACTION_SEND = '[data-testid="quick-action-send"]';
-  var TRANSFER_DROPDOWN_BUTTON = '[data-testid="transfer-dropdown-button"]';
-  var TRANSFER_DROPDOWN = 'div[class*="cds-dropdown"]';
-  var TRANSFER_DROPDOWN_BUTTON_IN_MENU = TRANSFER_DROPDOWN + ' button';
+  var SEND_URL = "https://www.coinbase.com/send";
   // Advance mobile: Transactions tab → global-actions CTA → BottomDrawer transfer
-  var GLOBAL_ACTIONS_CTA_BUTTON = "div[data-testid='global-actions-cta-wrapper'] button";
-  var BOTTOM_DRAWER_BUTTON = "div[class*='BottomDrawer'] button";
 
   // ── Locale-independent controls ──
   //
@@ -32,8 +27,6 @@
   // `data-icon-name` is NOT localized and is unique (max one per snapshot for each
   // of these), so it is the only stable handle. Match the icon, then walk up to the
   // control that owns it.
-  var ICON_TRANSACTIONS_TAB = "invoice"; // Home is "home", Trading is "trading"
-  var ICON_SEND_CRYPTO = "arrowUp";      // Receive "arrowDown", deposit "bank", cash-out "cash"
   var RECIPIENT_INPUT = '[data-testid="recipient-search-input"]';
 
   // Recipient dropdown rows. Every row carries the FULL address in its test id, so
@@ -178,14 +171,6 @@
   // is available to the driver functions ported in later steps.
   var SEL = {
     STEP_ACTIVE: STEP_ACTIVE,
-    QUICK_ACTION_SEND: QUICK_ACTION_SEND,
-    TRANSFER_DROPDOWN_BUTTON: TRANSFER_DROPDOWN_BUTTON,
-    ICON_TRANSACTIONS_TAB: ICON_TRANSACTIONS_TAB,
-    ICON_SEND_CRYPTO: ICON_SEND_CRYPTO,
-    TRANSFER_DROPDOWN: TRANSFER_DROPDOWN,
-    TRANSFER_DROPDOWN_BUTTON_IN_MENU: TRANSFER_DROPDOWN_BUTTON_IN_MENU,
-    GLOBAL_ACTIONS_CTA_BUTTON: GLOBAL_ACTIONS_CTA_BUTTON,
-    BOTTOM_DRAWER_BUTTON: BOTTOM_DRAWER_BUTTON,
     RECIPIENT_INPUT: RECIPIENT_INPUT,
     RECIPIENT_MANUAL_ADDRESS: RECIPIENT_MANUAL_ADDRESS,
     favoriteRecipient: favoriteRecipient,
@@ -400,90 +385,41 @@
   // which UI is active, then click through to the recipient field.
   // First VISIBLE control owning an icon named `iconName`, or null. Used where
   // Coinbase localizes the test ID and the icon is the only stable handle.
-  function iconControl(iconName) {
-    var icons = document.querySelectorAll('[data-icon-name="' + iconName + '"]');
-    for (var i = 0; i < icons.length; i++) {
-      // `closest` rather than a CSS `:has()` selector — `:has()` needs Safari
-      // 15.4+, and depending on it here would raise the SDK's minimum iOS.
-      var control = icons[i].closest('button, [role="button"], a');
-      if (control && isVisible(control)) return control;
-    }
+
+
+  function probeSendEntry() {
+    return {
+      recipient: !!document.querySelector(SEL.RECIPIENT_INPUT),
+      previousTransfer: !!queryVisible(SEL.STEP_PREVIOUS_TRANSFER),
+      holdModal: isHoldModalPresent()
+    };
+  }
+
+  // Precedence mirrors awaitRecipientOrPendingBlock, which this replaces at the
+  // entry point: recipient first, then the blockers. null means "nothing yet" and
+  // keeps pollUntil waiting.
+  function classifySendEntry(p) {
+    if (p.recipient) return { entry: "deep-link" };
+    if (p.previousTransfer) return { entry: "pending-transfer" };
+    if (p.holdModal) return { entry: "funds-not-available" };
     return null;
   }
 
-  function transactionsTab() { return iconControl(SEL.ICON_TRANSACTIONS_TAB); }
-  function sendCryptoDrawerItem() { return iconControl(SEL.ICON_SEND_CRYPTO); }
-
-  // Resolve however this layout starts a send, tagging WHICH route it implies.
+  // The session loads /send, which mounts the recipient step directly. The
+  // dashboard click-through is gone rather than kept as a fallback: it existed only
+  // to reach this step from /home, and a Coinbase change that stops /send mounting
+  // would otherwise route silently back onto it. That path is the flaky one — the
+  // send CTA was present in 33 of 38 snapshots in one capture and 0 of 8 in another
+  // — so the fallback would hide the regression it was meant to survive.
   //
-  // The route must be carried out of here, not re-derived by the caller. The old
-  // code re-read `getAttribute("data-testid")` and compared it to the literal
-  // "Transactions-Tab" — localized, so even a tab found by icon would have been
-  // routed to the standard path and then failed looking for a quick-action.
-  //
-  // Returns null while nothing matches, so the caller can keep polling.
-  function findSendTrigger() {
-    var el = queryVisible(SEL.QUICK_ACTION_SEND);
-    if (el) return { el: el, advance: false };
-    el = queryVisible(SEL.TRANSFER_DROPDOWN_BUTTON);
-    if (el) return { el: el, advance: true };
-    el = transactionsTab();
-    if (el) return { el: el, advance: true };
-    // Legacy English-only fallback, kept for layouts we have no capture of. It
-    // cannot match a localized UI — that is what the icon lookups above are for.
-    el = D.findButtonByText("Transfer");
-    if (el) return { el: el, advance: false };
-    return null;
-  }
-
+  // This fails loudly instead, naming the URL and the selector it waited for.
   async function openSendModal() {
-    var trigger = await pollUntil(findSendTrigger, 15000, "withdraw/send-trigger-not-found");
-    if (trigger.advance) {
-      await openSendModalAdvance();
-    } else {
-      await openSendModalStandard();
-    }
-  }
-
-  async function openSendModalStandard() {
-    var triggerButton = await pollUntil(function () {
-      return queryVisible(SEL.QUICK_ACTION_SEND) || D.findButtonByText("Transfer");
-    }, 15000, "withdraw/send-trigger-standard-modal-not-found");
-    await humanClick(triggerButton);
-
-    // After "Transfer", the layout either surfaces a menu/sheet with a
-    // "Send crypto" option, or jumps straight to the recipient field — and the
-    // container differs (desktop role="menu" vs mobile sheet). So don't depend
-    // on the container: look for the "Send crypto" option anywhere; click it if
-    // it appears, otherwise fall through to the recipient wait.
-    if (triggerButton.tagName === "BUTTON" && (triggerButton.textContent || "").trim() === "Transfer") {
-      var sendCrypto = await waitForButtonByText("Send crypto", { match: "contains", timeoutMs: 4000 })
-        .catch(function () { return null; });
-      if (sendCrypto) await humanClick(sendCrypto);
-    }
-
-    await awaitRecipientOrPendingBlock();
-  }
-
-  async function openSendModalAdvance() {
-    // The send CTA is unreliable on /home — present in 33 of 38 snapshots in one
-    // capture and 0 of 8 in the other — but reliable on /transactions (171 of 173).
-    // So go via the tab when it is there. Skip it when it is not: the layout that
-    // exposes the transfer dropdown directly has no tab, and clicking null throws.
-    var tab = transactionsTab();
-    if (tab) await humanClick(tab);
-    var dropdownBtn = await waitForElement(SEL.GLOBAL_ACTIONS_CTA_BUTTON, 5000);
-    await humanClick(dropdownBtn);
-    // Wait for the drawer to mount, then settle before picking an item.
-    await waitForElement(SEL.BOTTOM_DRAWER_BUTTON);
-    await humanDelay(200);
-    // Pick "Send crypto" by icon. Taking the drawer's first button — as this used
-    // to — is right only by ordering luck: "Receive crypto" is one position away,
-    // and every item's label is localized.
-    var sendItem = sendCryptoDrawerItem() || queryVisible(SEL.BOTTOM_DRAWER_BUTTON);
-    if (!sendItem) throw new Error("withdraw/send-crypto-item-not-found");
-    await humanClick(sendItem);
-    await awaitRecipientOrPendingBlock();
+    var entry = await pollUntil(function () {
+      return classifySendEntry(probeSendEntry());
+    }, 15000, "withdraw/send-step-not-mounted: " + SEND_URL + " " + SEL.RECIPIENT_INPUT);
+    bc("send-entry", entry.entry);
+    if (entry.entry === "pending-transfer") throw pendingTransferError(readPendingTransfer());
+    if (entry.entry === "funds-not-available") throw fundsNotAvailableError();
   }
 
   // Tagged error carrying a blocking prior transfer's details. Thrown from
@@ -1485,6 +1421,15 @@
     // (capture d9d96c27), so a vanished screen means we lost track of a held
     // send, not that it went through.
     if (p.sawIdVerification) return decide("id-verification");
+    // The scam-warning intro, once the budget is gone. It is listed above as a frame
+    // that renders BEFORE the outcome is knowable, and that holds — but it is also
+    // the settled state of the "this transfer looks like a scam" screen, which
+    // Coinbase blocks on and never advances. Measured on Android: it held across
+    // every poll for over a minute with no other risk marker appearing, and because
+    // nothing reported the gate this fell through to "processing", so the page was
+    // never presented and the user could not answer it. Tier 2 keeps both readings:
+    // a transitional intro still gets the whole budget to become something else.
+    if (p.riskStep && p.scamIntro) return decide("id-verification");
     // Last resort: the send modal is gone and no success screen ever rendered.
     // Coinbase closes the modal on some success variants, so treat it as done.
     if (!p.overlay) return decide("none");
@@ -1561,8 +1506,24 @@
     // The poll that reported `otp` already tried to pick a method, but it runs
     // without the page presented, so don't depend on that click having landed —
     // otherwise waitForElement below burns 15s and throws.
-    if (!queryVisible(SEL.OTP_INPUT) && chooseOtpMethod()) await D.sleep(300);
-    var input = await waitForElement(SEL.OTP_INPUT, 15000);
+    var choseMethod = false;
+    if (!queryVisible(SEL.OTP_INPUT) && chooseOtpMethod()) {
+      choseMethod = true;
+      await D.sleep(300);
+    }
+    var input;
+    try {
+      input = await waitForElement(SEL.OTP_INPUT, 15000);
+    } catch (e) {
+      // A method WAS chosen and the field still never appeared. That is a different
+      // failure from "no field ever existed", with a different owner, so it gets its
+      // own name — `element_not_found:#one-time-code` reads as a Coinbase layout
+      // change and is what made the production report unreadable (AUTH-4245).
+      if (choseMethod) {
+        throw new Error("withdraw/otp-field-missing-after-method-choice: " + SEL.OTP_INPUT);
+      }
+      throw e;
+    }
     fillOtpCode(input, code);
     await D.sleep(300);
     var start = Date.now();
@@ -1705,8 +1666,8 @@
     __internals: {
       SEL: SEL,
       recipientRow: recipientRow,
-      findSendTrigger: findSendTrigger,
-      sendCryptoDrawerItem: sendCryptoDrawerItem,
+      probeSendEntry: probeSendEntry,
+      classifySendEntry: classifySendEntry,
       classifyPostConfirm: classifyPostConfirm,
       probePostConfirm: probePostConfirm,
       settlePostConfirm: settlePostConfirm,
