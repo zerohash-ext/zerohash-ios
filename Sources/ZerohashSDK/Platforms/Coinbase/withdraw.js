@@ -52,6 +52,7 @@
   function coinDirect(ticker) {
     return '[data-testid="send-asset-selector-cell-' + String(ticker).toUpperCase() + '-cell-pressable"]';
   }
+  var ASSET_SEARCH_INPUT = '[data-testid="search-input"]';
 
   // Network selection
   var NETWORK_ITEMS = '[data-testid$="-cell-pressable"][data-testid^="l2-list-item-"]:not([disabled])';
@@ -180,6 +181,7 @@
     EXCHANGE_OPTION: EXCHANGE_OPTION,
     COIN_LIST: COIN_LIST,
     coinDirect: coinDirect,
+    ASSET_SEARCH_INPUT: ASSET_SEARCH_INPUT,
     NETWORK_ITEMS: NETWORK_ITEMS,
     NETWORK_ITEMS_ANY: NETWORK_ITEMS_ANY,
     networkTestId: networkTestId,
@@ -699,6 +701,24 @@
     // 5s without an enabled target cell. Surface incompatibility specifically,
     // else enumerate what's on screen for a useful not-found error.
     if (isNoCompatibleAssets()) throw addressUnsupportedError();
+
+    var search = document.querySelector(SEL.ASSET_SEARCH_INPUT);
+    if (search) {
+      search.focus();
+      setReactValue(search, String(ticker).toUpperCase());
+      var filtered = await pollUntil(function () {
+        var cell = document.querySelector(directSelector);
+        return (cell && !isDisabled(cell)) ? cell : null;
+      }, 3000).catch(function () { return null; });
+      if (filtered) {
+        await clickAndVerifyAdvance(filtered, "selectCoin(" + ticker + ") via search");
+        return;
+      }
+      if (isNoCompatibleAssets()) throw addressUnsupportedError();
+      var narrowed = document.querySelector(directSelector);
+      if (narrowed && isDisabled(narrowed)) throw addressUnsupportedError();
+    }
+
     var items = Array.prototype.slice.call(document.querySelectorAll(SEL.COIN_LIST));
     for (var i = 0; i < items.length; i++) {
       var testId = items[i].getAttribute("data-testid") || "";
@@ -1672,6 +1692,7 @@
       probePostConfirm: probePostConfirm,
       settlePostConfirm: settlePostConfirm,
       readActiveStep: readActiveStep,
+      selectCoin: selectCoin,
       queryVisibleLive: queryVisibleLive,
       findNetworkWarningAck: findNetworkWarningAck,
       pastNetworkWarning: pastNetworkWarning,

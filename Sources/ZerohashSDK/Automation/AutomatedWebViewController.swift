@@ -199,6 +199,10 @@ final class AutomatedWebViewController: UIViewController, WKNavigationDelegate {
         self.overlay = overlay
     }
 
+    private func revealOverlay(_ revealed: Bool) {
+        overlay?.isHidden = revealed
+    }
+
     // MARK: - Challenge-clearance polling
 
     /// JS expression that is truthy while a Cloudflare interstitial/Turnstile
@@ -215,6 +219,7 @@ final class AutomatedWebViewController: UIViewController, WKNavigationDelegate {
     private func pollUntilChallengeClears() {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            var didReveal = false
             while !self.didComplete {
                 var challenged = true
                 do {
@@ -228,9 +233,15 @@ final class AutomatedWebViewController: UIViewController, WKNavigationDelegate {
                 if self.didComplete { return }
                 if !challenged {
                     Log.coinbase.debug("challenge cleared; restoring overlay and replaying")
+                    self.revealOverlay(false)
                     self.presentOverlay()
                     self.evaluateScript(on: self.webView)
                     return
+                }
+                if !didReveal {
+                    Log.coinbase.debug("Cloudflare challenge up; lifting overlay so the user can solve it")
+                    self.revealOverlay(true)
+                    didReveal = true
                 }
                 try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
             }

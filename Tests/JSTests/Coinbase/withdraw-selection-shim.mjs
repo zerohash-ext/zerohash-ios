@@ -164,6 +164,13 @@ class El {
     (this._listeners.click || []).forEach((fn) => fn({ type: "click", target: this }));
   }
   focus() {}
+
+  dispatchEvent(evt) {
+    const type = evt && evt.type;
+    (this.events || (this.events = [])).push(type);
+    (this._listeners[type] || []).forEach((fn) => fn(evt));
+    return true;
+  }
 }
 
 // ─── Document ──────────────────────────────────────────────────────────────
@@ -251,14 +258,21 @@ const hostGlobals = (console) => ({ setTimeout, clearTimeout, console });
 // realisticClick forwards to el.click() so fixtures' listeners fire; sleep is a
 // short real delay so poll loops spin fast without busy-waiting. Date.now() (a VM
 // intrinsic) drives the deadlines, so tests pass small timeouts.
-function domStub() {
+function domStub(onSearch) {
   return {
     sleep: () => new Promise((r) => setTimeout(r, 5)),
     waitFor: () => Promise.reject(new Error("selection-shim: waitFor is not stubbed")),
     realisticClick: (node) => {
       if (node && typeof node.click === "function") node.click();
     },
-    findButtonByText: () => null
+    findButtonByText: () => null,
+    setReactValue: (input, value) => {
+      input.attrs.value = value;
+      (input.typed || (input.typed = [])).push(value);
+      input.dispatchEvent({ type: "input", bubbles: true });
+      input.dispatchEvent({ type: "change", bubbles: true });
+      if (onSearch) onSearch(value, input);
+    }
   };
 }
 
@@ -270,7 +284,7 @@ function domStub() {
  */
 export function loadSelection(hooks = {}) {
   const document = new Doc();
-  const window = { __zhDom: domStub() };
+  const window = { __zhDom: domStub(hooks.onSearch) };
   vm.runInNewContext(SOURCE, { window, document, ...hostGlobals(hooks.console || console) });
   if (!window.__zhWithdraw || !window.__zhWithdraw.__internals) {
     throw new Error("selection-shim: window.__zhWithdraw.__internals is missing");

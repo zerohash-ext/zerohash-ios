@@ -151,8 +151,8 @@ public struct Coinbase: AuthFlow, DepositFlow, BalanceFlow, WithdrawFlow {
             arguments: ["params": Self.jsonObject(payload)],
             overlay: overlay,
             showOverlay: showOverlay,
-            waitForChallengeClearance: false,
-            timeoutMs: 30_000
+            waitForChallengeClearance: true,
+            timeoutMs: 90_000
         )
 
         if raw == nil {
