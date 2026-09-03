@@ -128,11 +128,19 @@ function cappedPolls(document) {
   };
 }
 
-function run(document, params) {
+function run(document, params, idvReason) {
   const window = {
     HTMLInputElement: FakeHTMLInputElement,
     HTMLTextAreaElement: FakeHTMLInputElement
   };
+  if (idvReason !== undefined) {
+    window.__zhCoinbaseIdv = {
+      blockedReasonForAction: async () => idvReason,
+      blockedReasonFromVisibleDom: async () => idvReason,
+      errorCodeForReason: (reason) =>
+        reason === "idv_pending" ? "IDV_PENDING" : reason === "idv_failed" ? "IDV_FAILED" : null
+    };
+  }
   const ctx = vm.createContext({ window, document, params, ...hostGlobals() });
   vm.runInContext(DOM_HELPERS, ctx);
   Object.assign(window.__zhDom, cappedPolls(document));
@@ -156,8 +164,8 @@ export const SEL = run(inertDocument(), { asset: "BTC" }).__zhDeposit.__internal
  * `__internals.pickAsset` directly, so the IIFE's own `run()` is left unawaited
  * and its rejection swallowed.
  */
-export function loadDeposit(documentOptions = {}, params = {}) {
+export function loadDeposit(documentOptions = {}, params = {}, idvReason = undefined) {
   const document = makeDocument(documentOptions);
-  const window = run(document, params);
+  const window = run(document, params, idvReason);
   return { internals: window.__zhDeposit.__internals, window, document };
 }

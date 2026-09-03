@@ -65,9 +65,31 @@
   // this step from /trade, and keeping it would let a Coinbase change that stops
   // /receive mounting route silently back onto a path built from a generated-class
   // div with no testid. Fails loudly instead, naming what it waited for.
+  function idvGate() {
+    return window.__zhCoinbaseIdv || null;
+  }
+
+  async function idvBlockedErrorCodeForAction(action) {
+    var gate = idvGate();
+    if (!gate) return null;
+    var reason = await gate.blockedReasonForAction(action);
+    return reason ? gate.errorCodeForReason(reason) : null;
+  }
+
+  async function idvBlockedErrorCodeFromDom() {
+    var gate = idvGate();
+    if (!gate) return null;
+    var reason = await gate.blockedReasonFromVisibleDom();
+    return reason ? gate.errorCodeForReason(reason) : null;
+  }
+
   async function openReceiveModal() {
     var step = await waitUntil(function () { return $(ASSET_SELECTION_STEP); }, 10000);
-    if (!step) throw new Error("receive_entry_not_found:step " + RECEIVE_URL);
+    if (!step) {
+      var idvCodeAtEntry = await idvBlockedErrorCodeFromDom();
+      if (idvCodeAtEntry) throw new Error(idvCodeAtEntry);
+      throw new Error("receive_entry_not_found:step " + RECEIVE_URL);
+    }
   }
 
   function visibleAssets() {
@@ -94,6 +116,8 @@
     el = await waitFor(sel, 4000).catch(function () { return null; });
 
     if (!el) {
+      var idvCodeAtAssetPick = await idvBlockedErrorCodeFromDom();
+      if (idvCodeAtAssetPick) throw new Error(idvCodeAtAssetPick);
       throw new Error(
         "asset_not_available:" + ASSET + " visible=[" + visibleAssets().join(",") + "]"
       );
@@ -236,6 +260,10 @@
 
   async function run() {
     if (!ASSET) throw new Error("missing_asset");
+    var idvCheckStartedAt = Date.now();
+    var idvCode = await idvBlockedErrorCodeForAction("receives");
+    if (idvCode) throw new Error(idvCode);
+    DEADLINE += Date.now() - idvCheckStartedAt;
     bc("open-modal");
     await openReceiveModal();
     bc("select-asset", ASSET);
@@ -279,12 +307,16 @@
       }
       await sleep(250);
     }
+    var idvCodeAfterDeadline = await idvBlockedErrorCodeFromDom();
+    if (idvCodeAfterDeadline) throw new Error(idvCodeAfterDeadline);
     throw new Error("timeout");
   }
 
   window.__zhDeposit = {
     __internals: {
       pickAsset: pickAsset,
+      idvBlockedErrorCodeFromDom: idvBlockedErrorCodeFromDom,
+      idvBlockedErrorCodeForAction: idvBlockedErrorCodeForAction,
       SEL: {
         assetCell: assetCell,
         ANY_ASSET_CELL: ANY_ASSET_CELL,
