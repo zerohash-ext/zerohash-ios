@@ -32,6 +32,14 @@ struct AutomationWebViewErrorTests {
         #expect(AutomationWebViewError.platformThrew("hostUnavailable").retryable == true)
     }
 
+    @Test("the stageless visible-runner timeout is retryable too")
+    func statelessTimeoutRetryable() {
+        #expect(AutomationWebViewError.platformThrew("timeout").retryable == true)
+        #expect(
+            AutomationWebViewError.platformThrew(
+                AutomatedRunError.timeout.errorDescription ?? "").retryable == true)
+    }
+
     @Test("platform-shape failures stay non-retryable")
     func shapeFailuresNotRetryable() {
         #expect(AutomationWebViewError.platformThrew("invalid JS return").retryable == false)

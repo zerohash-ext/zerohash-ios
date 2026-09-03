@@ -46,6 +46,25 @@ struct AutomationWebViewMessageRouterErrorContractTests {
         }
     }
 
+    private struct StubBalanceFlow: BalanceFlow {
+        let id: String
+        let throwOnGetBalance: Error?
+
+        init(id: String, throwOnGetBalance: Error? = nil) {
+            self.id = id
+            self.throwOnGetBalance = throwOnGetBalance
+        }
+
+        func getBalance(
+            ctx: ExecutionContext,
+            overlay: OverlayOptions,
+            showOverlay: Bool
+        ) async throws -> [AssetBalance] {
+            if let e = throwOnGetBalance { throw e }
+            return []
+        }
+    }
+
     private func makeRouter(seed: [any PlatformIdentity], sink: FakeReplySink) -> AutomationWebViewMessageRouter {
         let registry = PlatformRegistry(default: seed)
         let shared = SharedWebViewConfiguration()
@@ -83,6 +102,19 @@ struct AutomationWebViewMessageRouterErrorContractTests {
                                 throwOnStatus: RunnerError.timeout(stage: .initialLoad))],
             sink: sink)
         await router.dispatch(ZeroAuthRequest(id: "s2", platform: "cbase", operation: "auth.status"))
+        #expect(sink.responses[0].retryable == true)
+    }
+
+    @Test("a getBalance timeout is advertised as retryable")
+    func balanceTimeoutIsRetryable() async {
+        let sink = FakeReplySink()
+        let router = makeRouter(
+            seed: [StubBalanceFlow(id: "cbase", throwOnGetBalance: AutomatedRunError.timeout)],
+            sink: sink)
+        await router.dispatch(ZeroAuthRequest(id: "b1", platform: "cbase", operation: "getBalance"))
+        #expect(sink.responses.count == 1)
+        #expect(sink.responses[0].success == false)
+        #expect(sink.responses[0].error == "timeout")
         #expect(sink.responses[0].retryable == true)
     }
 

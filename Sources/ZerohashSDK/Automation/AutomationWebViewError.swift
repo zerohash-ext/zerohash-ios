@@ -26,7 +26,7 @@ enum AutomationWebViewError: Error, Equatable {
     /// Prefixes of the `RunnerError` / `ContextError` descriptions that mean the
     /// page was fine and the attempt merely didn't land.
     private static let transientPrefixes = [
-        "timeout:", "loadFailed:", "navigationLost", "hostUnavailable",
+        "timeout", "loadFailed:", "navigationLost", "hostUnavailable",
     ]
 
     /// Whether the failure was transient. Says nothing about whether the caller may
