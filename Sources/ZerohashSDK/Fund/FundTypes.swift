@@ -67,7 +67,8 @@ public struct FundDepositEvent {
     public let statusDetails: String?
     /// When the status occurred (ISO 8601).
     public let statusOccurredAt: String?
-    /// True once the deposit is processed. False while pending, verifying or failed.
+    /// True once the deposit is processed **and** account matching is not holding
+    /// it back. False while pending, verifying or failed.
     public let success: Bool
     /// Asset identifier (e.g. `BTC`, `USDC`).
     public let assetId: String?
@@ -84,6 +85,19 @@ public struct FundDepositEvent {
     public let data: [String: Any]
     public let jsonString: String
 
+    /// The one status the shared integrations flow treats as success. Unlike Auth
+    /// on connect-ios — which also accepts `CONFIRMED`, gated on a profile flag
+    /// that never reaches the bridge — `useHandleDepositStatus` in
+    /// `integrations-flow` shows the success screen only at `PROCESSED`, so
+    /// `CONFIRMED` is still in flight here.
+    private static let successStatus = "processed"
+
+    /// Account-matching states the web flow routes away from success before it
+    /// ever looks at the status: `PENDING` shows the verifying screen, `INVALID`
+    /// and `ERROR` show the failed screen. Absent, `VALID`, or any value we don't
+    /// know yet falls through to the status check, exactly as the web hook does.
+    private static let nonSuccessMatchingStatuses: Set<String> = ["pending", "invalid", "error"]
+
     public init(from data: [String: Any], jsonString: String = "") {
         self.data = data
         self.jsonString = jsonString
@@ -93,13 +107,16 @@ public struct FundDepositEvent {
         self.status = statusValue
         self.statusDetails = status?["details"] as? String
         self.statusOccurredAt = status?["occurredAt"] as? String
-        self.success = statusValue?.lowercased() == "processed"
         self.assetId = data["assetId"] as? String
         self.networkId = data["networkId"] as? String
         self.amount = data["amount"] as? String
         let validation = data["accountMatchingValidation"] as? [String: Any]
-        self.accountMatchingStatus = validation?["status"] as? String
+        let matchingStatus = validation?["status"] as? String
+        self.accountMatchingStatus = matchingStatus
         self.accountMatchingReason = validation?["reason"] as? String
+        let matchingBlocks = matchingStatus
+            .map { Self.nonSuccessMatchingStatuses.contains($0.lowercased()) } ?? false
+        self.success = statusValue?.lowercased() == Self.successStatus && !matchingBlocks
     }
 }
 

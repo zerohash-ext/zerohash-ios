@@ -46,11 +46,45 @@ final class FundDepositEventTests: XCTestCase {
         XCTAssertTrue(event.success)
     }
 
+    /// `CONFIRMED` belongs here, not with success: the shared integrations flow shows
+    /// its success screen only at `PROCESSED`. Auth on connect-ios is the one that
+    /// also accepts `CONFIRMED`, because its own success rule is profile-gated.
     func testIsNotSuccessfulWhileNonTerminalOrFailed() {
         for value in ["PENDING", "CONFIRMED", "FAILED", "ACCOUNT_VALIDATION_FAILED"] {
             let event = FundDepositEvent(from: depositPayload(statusValue: value))
             XCTAssertFalse(event.success, "\(value) must not report success")
             XCTAssertEqual(event.status, value)
+        }
+    }
+
+    /// The web flow checks account matching before the status, so a deposit still
+    /// verifying shows the verifying screen even once the status reads `PROCESSED`.
+    func testIsNotSuccessfulWhileAccountMatchingIsPending() {
+        let event = FundDepositEvent(
+            from: depositPayload(statusValue: "PROCESSED", validationStatus: "PENDING")
+        )
+
+        XCTAssertFalse(event.success)
+    }
+
+    /// `INVALID` and `ERROR` both send the web flow to the deposit-failed screen.
+    func testIsNotSuccessfulWhenAccountMatchingRejects() {
+        for validation in ["INVALID", "ERROR"] {
+            let event = FundDepositEvent(
+                from: depositPayload(statusValue: "PROCESSED", validationStatus: validation)
+            )
+            XCTAssertFalse(event.success, "\(validation) must not report success")
+        }
+    }
+
+    /// `VALID` passes through, and so does any value we don't recognise — web falls
+    /// through to the status check rather than treating it as a failure.
+    func testIsSuccessfulWhenAccountMatchingDoesNotBlock() {
+        for validation in ["VALID", "SKIPPED"] {
+            let event = FundDepositEvent(
+                from: depositPayload(statusValue: "PROCESSED", validationStatus: validation)
+            )
+            XCTAssertTrue(event.success, "\(validation) must not block success")
         }
     }
 

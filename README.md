@@ -54,7 +54,7 @@ Add ZerohashSDK as a dependency in your `Package.swift` file:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/zerohash-ext/zerohash-ios", .upToNextMinor(from: "1.2.0"))
+    .package(url: "https://github.com/zerohash-ext/zerohash-ios", .upToNextMinor(from: "1.2.1"))
 ]
 ```
 
@@ -398,7 +398,9 @@ deposit.depositId              // String? — unique identifier for the deposit
 deposit.status                 // String? — "PROCESSED", "FAILED", "PENDING", ...
 deposit.statusDetails          // String? — human-readable detail for the status
 deposit.statusOccurredAt       // String? — when it occurred (ISO 8601)
-deposit.success                // Bool    — true once processed; false while pending or failed
+deposit.success                // Bool    — true once PROCESSED and account matching is not
+                               //           PENDING/INVALID/ERROR; false while pending,
+                               //           verifying or failed
 deposit.assetId                // String? — asset identifier (e.g. "USDC")
 deposit.networkId              // String? — network identifier (e.g. "ethereum")
 deposit.amount                 // String? — amount deposited
