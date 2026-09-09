@@ -1,5 +1,6 @@
 # zerohash-ios
 
+[![Release](https://img.shields.io/github/v/release/zerohash-ext/zerohash-ios?label=release)](https://github.com/zerohash-ext/zerohash-ios/releases)
 ![Swift](https://img.shields.io/badge/Swift-6.0%2B-orange.svg)
 ![Platform](https://img.shields.io/badge/Platform-iOS%2017%2B-blue.svg)
 ![SPM Compatible](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg)
@@ -55,7 +56,7 @@ Add ZerohashSDK as a dependency in your `Package.swift` file:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/zerohash-ext/zerohash-ios", .upToNextMinor(from: "1.2.1"))
+    .package(url: "https://github.com/zerohash-ext/zerohash-ios", .upToNextMinor(from: "1.3.0"))
 ]
 ```
 
