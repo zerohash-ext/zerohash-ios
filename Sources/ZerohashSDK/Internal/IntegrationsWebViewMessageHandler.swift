@@ -10,13 +10,22 @@ protocol IntegrationsWebViewMessageHandlerDelegate: AnyObject {
     func messageHandlerDidReceiveClose(_ handler: IntegrationsWebViewMessageHandler)
     func messageHandlerDidReceiveDeposit(
         _ handler: IntegrationsWebViewMessageHandler, data: [String: Any], jsonString: String)
+    /// Completion for the crypto-deposits route, posted as `crypto-deposit`. Its
+    /// own message type rather than `deposit`, which already means fund's
+    /// completion here and carries a different shape. On an external-source
+    /// deposit this follows the `deposit-status` messages; on a manual one it is
+    /// the only report.
+    func messageHandlerDidReceiveCryptoDeposit(
+        _ handler: IntegrationsWebViewMessageHandler, data: [String: Any], jsonString: String)
     func messageHandlerDidReceiveCryptoWithdrawal(
         _ handler: IntegrationsWebViewMessageHandler, data: [String: Any], jsonString: String)
-    /// Status of a deposit funded from an external source, posted as
-    /// `deposit-status`. Its own message type because `deposit` already means the
-    /// deposit *completed* — a status there would report that the money arrived
-    /// while the deposit is still verifying, or has failed. Non-terminal: it can
-    /// arrive more than once per deposit.
+    /// Status of a deposit funded from a connected external account, posted as
+    /// `deposit-status` by both the fund and crypto-deposits routes. Its own
+    /// message type because `deposit` already means the deposit *completed* — a
+    /// status there would report that the money arrived while the deposit is
+    /// still verifying, or has failed. Non-terminal: it can arrive more than once
+    /// per deposit. The payload is identical for both flows, so one handler and
+    /// one event type cover them.
     func messageHandlerDidReceiveDepositStatus(
         _ handler: IntegrationsWebViewMessageHandler, data: [String: Any], jsonString: String)
     /// A terminal *failed* transaction, posted by the mobile web app as
@@ -40,8 +49,8 @@ protocol IntegrationsWebViewMessageHandlerDelegate: AnyObject {
 
 /// Bridge contract matches the zerohash mobile web app:
 /// inbound (web→native) `page-ready`, `content-ready`, `navigate`, `close`,
-/// `error`, `event`, `deposit`, `deposit-status`, `crypto-withdrawal`,
-/// `fund-withdrawal`, `transaction-failed`;
+/// `error`, `event`, `deposit`, `deposit-status`, `crypto-deposit`,
+/// `crypto-withdrawal`, `fund-withdrawal`, `transaction-failed`;
 /// outbound (native→web) `jwt`, `config`.
 class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegate,
     WKUIDelegate
@@ -331,6 +340,10 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
         case "deposit-status":
             let data = jsonObject["data"] as? [String: Any] ?? [:]
             delegate?.messageHandlerDidReceiveDepositStatus(self, data: data, jsonString: jsonString)
+
+        case "crypto-deposit":
+            let data = jsonObject["data"] as? [String: Any] ?? [:]
+            delegate?.messageHandlerDidReceiveCryptoDeposit(self, data: data, jsonString: jsonString)
 
         case "crypto-withdrawal":
             let data = jsonObject["data"] as? [String: Any] ?? [:]

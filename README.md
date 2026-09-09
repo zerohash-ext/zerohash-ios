@@ -6,9 +6,10 @@
 
 Swift SDK for integrating [zerohash](https://docs.zerohash.com) products into your iOS app.
 
-The SDK exposes three flows you can present from your app:
+The SDK exposes four flows you can present from your app:
 
 - **Fund** — account funding / pay-to-settle flow
+- **Crypto Deposits** — deposit crypto with no conversion
 - **Crypto Withdrawals** — withdraw crypto to an external address
 - **Fund Withdrawals** — withdraw funds to a linked (Auth connection) destination
 
@@ -32,10 +33,10 @@ Crypto transactions in the Fund SDK can be held by the exchange for an identity 
 user completes inside the SDK's WebView using the camera. Your app must declare
 both keys below.
 
-| Key | Why |
-| --- | --- |
-| `NSCameraUsageDescription` | Liveness / document capture during the identity check |
-| `NSMicrophoneUsageDescription` | Requested alongside the camera by the identity check |
+| Key                            | Why                                                   |
+| ------------------------------ | ----------------------------------------------------- |
+| `NSCameraUsageDescription`     | Liveness / document capture during the identity check |
+| `NSMicrophoneUsageDescription` | Requested alongside the camera by the identity check  |
 
 ## Installation
 
@@ -127,6 +128,63 @@ class FundViewController: UIViewController {
         )
 
         fundSession?.present(from: self)
+    }
+}
+```
+
+### Crypto Deposits
+
+The Crypto Deposits app walks the end user through depositing a crypto asset,
+either from a connected external account or by sending to an address the flow
+displays. `onCompleted`/`onFailed` report a deposit made through the flow's own
+screens; one funded from a connected account reports on `onDeposit` instead.
+
+Where the deposit lands is decided by the JWT, not by this call. A
+`deposit_details.to_address` claim routes it to that platform-owned address
+(**external mode**, where the flow shows no zerohash address or QR code
+anywhere), and its absence routes it to a zerohash internal wallet
+(**internal mode**). `CryptoDepositsEvent` is the same either way.
+
+```swift
+import UIKit
+import ZerohashSDK
+
+class DepositsViewController: UIViewController {
+
+    private var depositsSession: ZerohashCryptoDepositsSession?
+
+    @IBAction func startDepositTapped(_ sender: UIButton) {
+        let callbacks = CryptoDepositsCallbacks(
+            onClose: { print("Crypto Deposits closed") },
+            onCompleted: { deposit in
+                print("Deposit completed: \(deposit.amount ?? "unknown") \(deposit.assetSymbol ?? "")")
+            },
+            // The deposit itself failed — not an SDK error, which is onError.
+            onFailed: { deposit in
+                print("Deposit failed: \(deposit.depositId ?? "unknown")")
+            },
+            // The connected-account path reports here and never on onCompleted.
+            // A status, not an outcome: can fire more than once per deposit.
+            onDeposit: { deposit in
+                print("Deposit status: \(deposit.status ?? "unknown") success=\(deposit.success)")
+            },
+            onError: { error in
+                print("Crypto Deposits error \(error.code): \(error.message)")
+            },
+            onLoaded: { print("Crypto Deposits ready") },
+            onEvent: { event in
+                print("Crypto Deposits event: \(event.type)")
+            }
+        )
+
+        depositsSession = ZerohashSDK.configureCryptoDeposits(
+            jwt: "your-jwt-token",
+            environment: .production,
+            theme: .system,
+            callbacks: callbacks
+        )
+
+        depositsSession?.present(from: self)
     }
 }
 ```
@@ -228,12 +286,27 @@ Configures a Fund session that can be presented later. Returns a
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `jwt` | `String` | — | JWT token authenticating the end user |
-| `environment` | `Environment` | `.production` | `.sandbox` or `.production` |
-| `theme` | `Theme` | `.system` | `.light`, `.dark`, or `.system` |
-| `callbacks` | `FundCallbacks` | empty | Event callbacks for the Fund flow |
+| Parameter     | Type            | Default       | Description                           |
+| ------------- | --------------- | ------------- | ------------------------------------- |
+| `jwt`         | `String`        | —             | JWT token authenticating the end user |
+| `environment` | `Environment`   | `.production` | `.sandbox` or `.production`           |
+| `theme`       | `Theme`         | `.system`     | `.light`, `.dark`, or `.system`       |
+| `callbacks`   | `FundCallbacks` | empty         | Event callbacks for the Fund flow     |
+
+#### `configureCryptoDeposits(jwt:environment:theme:callbacks:)`
+
+Configures a Crypto Deposits session that can be presented later. Returns a
+`ZerohashCryptoDepositsSession`. Internal vs external destination mode comes
+from the JWT's `deposit_details.to_address`, not from these parameters.
+
+**Parameters:**
+
+| Parameter     | Type                      | Default       | Description                                                                                                                        |
+| ------------- | ------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `jwt`         | `String`                  | —             | JWT token authenticating the end user                                                                                              |
+| `environment` | `Environment`             | `.production` | `.sandbox` or `.production`                                                                                                        |
+| `theme`       | `Theme`                   | `.system`     | `.light`, `.dark`, or `.system`                                                                                                    |
+| `callbacks`   | `CryptoDepositsCallbacks` | empty         | Event callbacks for the Crypto Deposits flow (`onClose`, `onCompleted`, `onFailed`, `onDeposit`, `onError`, `onLoaded`, `onEvent`) |
 
 #### `configureCryptoWithdrawals(jwt:environment:theme:callbacks:)`
 
@@ -242,12 +315,12 @@ Configures a Crypto Withdrawals session that can be presented later. Returns a
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `jwt` | `String` | — | JWT token authenticating the end user |
-| `environment` | `Environment` | `.production` | `.sandbox` or `.production` |
-| `theme` | `Theme` | `.system` | `.light`, `.dark`, or `.system` |
-| `callbacks` | `CryptoWithdrawalsCallbacks` | empty | Event callbacks for the Crypto Withdrawals flow |
+| Parameter     | Type                         | Default       | Description                                     |
+| ------------- | ---------------------------- | ------------- | ----------------------------------------------- |
+| `jwt`         | `String`                     | —             | JWT token authenticating the end user           |
+| `environment` | `Environment`                | `.production` | `.sandbox` or `.production`                     |
+| `theme`       | `Theme`                      | `.system`     | `.light`, `.dark`, or `.system`                 |
+| `callbacks`   | `CryptoWithdrawalsCallbacks` | empty         | Event callbacks for the Crypto Withdrawals flow |
 
 #### `configureFundWithdrawals(jwt:environment:theme:callbacks:)`
 
@@ -256,14 +329,14 @@ Configures a Fund Withdrawals session that can be presented later. Returns a
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `jwt` | `String` | — | JWT token authenticating the end user |
-| `environment` | `Environment` | `.production` | `.sandbox` or `.production` |
-| `theme` | `Theme` | `.system` | `.light`, `.dark`, or `.system` |
-| `callbacks` | `FundWithdrawalsCallbacks` | empty | Event callbacks for the Fund Withdrawals flow |
+| Parameter     | Type                       | Default       | Description                                   |
+| ------------- | -------------------------- | ------------- | --------------------------------------------- |
+| `jwt`         | `String`                   | —             | JWT token authenticating the end user         |
+| `environment` | `Environment`              | `.production` | `.sandbox` or `.production`                   |
+| `theme`       | `Theme`                    | `.system`     | `.light`, `.dark`, or `.system`               |
+| `callbacks`   | `FundWithdrawalsCallbacks` | empty         | Event callbacks for the Fund Withdrawals flow |
 
-### ZerohashFundSession / ZerohashCryptoWithdrawalsSession / ZerohashFundWithdrawalsSession
+### ZerohashFundSession / ZerohashCryptoDepositsSession / ZerohashCryptoWithdrawalsSession / ZerohashFundWithdrawalsSession
 
 All session types expose the same lifecycle:
 
@@ -361,7 +434,7 @@ A failed transaction is a flow outcome, **not** an error. Handle both if you nee
 to cover every unsuccessful path.
 
 The two flows differ in one respect. A failed **deposit** (Fund) fires `onFailed`
-only. A failed **crypto withdrawal** fires `onFailed` *and* `onError`, for
+only. A failed **crypto withdrawal** fires `onFailed` _and_ `onError`, for
 backwards compatibility with hosts written before `onFailed` existed — `onError`
 was that flow's only failure signal. Build against `onFailed` in both cases; if
 you handle both callbacks, guard against counting a failed withdrawal twice. The
@@ -383,11 +456,16 @@ fund.jsonString       // String  — raw JSON string
 fund.getString("key") // String?  (also getInt/getBool/getDouble/getObject)
 ```
 
-### onDeposit (Fund only)
+### onDeposit (Fund and Crypto Deposits)
 
-A deposit funded from an **external source** (the "connect an account" path) does
-not reach `onCompleted`/`onFailed` at all. It reports on `onDeposit`, with a
-`FundDepositEvent` — matching `onDeposit` on the Fund web SDK.
+A deposit funded from an **external source** (the "connect an account" path)
+reports on `onDeposit`, with an `IntegrationsDepositEvent` — matching `onDeposit`
+on the web SDKs. Both flows deliver the identical payload, because it is built by
+the shared web hook rather than by either SDK. (`FundDepositEvent` is an alias
+for that type, kept so existing Fund code still compiles.)
+
+On both flows this path reaches `onDeposit` and nothing else — it never touches
+`onCompleted`/`onFailed`, which belong to each SDK's own screens.
 
 `onDeposit` is a **status, not an outcome**. It also fires while account matching is
 verifying, and can arrive more than once for the same deposit, so do not treat the
@@ -415,6 +493,30 @@ anywhere in the stack, so prefer it over reporting a bare id.
 
 A manual or Pay deposit is unaffected: it is terminal, and reaches
 `onCompleted`/`onFailed` with all seven `FundEvent` fields as listed above.
+
+Crypto Deposits (`CryptoDepositsEvent`), delivered to `onCompleted` from the
+flow's own screens. A deposit funded from a connected external account reports on
+`onDeposit` instead.
+
+A terminal **failed** deposit arrives on `onFailed` with the same fields, not on
+`onError` — that stays for SDK/request errors. Both carry:
+
+```swift
+deposit.depositId               // String? — deposit ID returned by the API
+deposit.assetSymbol             // String? — asset deposited (e.g. "USDC")
+deposit.network                 // String? — network identifier (e.g. "ethereum")
+deposit.amount                  // String? — amount deposited
+deposit.data                    // [String: Any] — raw event payload
+deposit.jsonString              // String  — raw JSON string
+deposit.getString("key")        // String?
+```
+
+Crypto Deposits also delivers the shared `IntegrationsDepositEvent` on
+`onDeposit`, with the same fields listed for Fund above, when — and only when —
+the deposit was funded from a connected external account — that path does not
+reach `onCompleted`. It is a _status_, not an outcome: non-terminal and
+repeatable, so read `status` / `success` rather than treating the call itself as
+one. `FundDepositEvent` is an alias for this type.
 
 Crypto Withdrawals (`CryptoWithdrawalsEvent`):
 
@@ -489,7 +591,7 @@ Called when the session is closed by the user or programmatically via
 
 ### Setting Theme
 
-Both flows support the same three theme options:
+Every flow supports the same three theme options:
 
 ```swift
 // Light theme
@@ -513,5 +615,6 @@ The theme applies to the WebView content and the loading indicator.
 ## Contact
 
 For additional support or questions about the zerohash platform:
+
 - [Technical Support](https://zerohash.com/)
 - [Documentation](https://docs.zerohash.com)

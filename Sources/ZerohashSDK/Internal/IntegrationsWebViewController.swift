@@ -359,6 +359,17 @@ class IntegrationsWebViewController: UIViewController,
         callbacks.onDepositStatus?(data, jsonString)
     }
 
+    /// Completion for the crypto-deposits route. The mobile web app posts
+    /// `crypto-deposit`; like `deposit`/`crypto-withdrawal` it lands on the same
+    /// completion sink and the session types the payload.
+    func messageHandlerDidReceiveCryptoDeposit(
+        _ handler: IntegrationsWebViewMessageHandler,
+        data: [String: Any],
+        jsonString: String
+    ) {
+        callbacks.onCompleted?(data, jsonString)
+    }
+
     /// Withdrawal counterpart to `deposit`. The mobile web app posts
     /// `crypto-withdrawal` for the crypto-withdrawals route; both land on the
     /// same completion sink.
