@@ -12,19 +12,23 @@ final class EnvironmentTests: XCTestCase {
         XCTAssertEqual(Environment.sandbox.cdnBaseURL, "https://sdk-cdn.cert.zerohash.com")
         XCTAssertEqual(Environment.production.cdnBaseURL, "https://sdk-cdn.zerohash.com")
         #if DEBUG
+        XCTAssertEqual(Environment.dev.cdnBaseURL, "https://sdk-cdn.dev.0hash.com")
         XCTAssertEqual(Environment.gating.cdnBaseURL, "https://sdk-cdn.gating.0hash.com")
         #endif
     }
 
     // MARK: - toWebValue
 
-    /// The web vocabulary only has production/sandbox — `.gating` must send
-    /// `sandbox`; the gating deployment's runtime env-config picks the hosts.
-    func testToWebValueMapsGatingToSandbox() {
+    /// Internal envs pass their literal name through (matches
+    /// zerohash-android's `Environment.toWebValue()`) so the mobile web app's
+    /// Fund iframe resolves from the matching CDN host instead of collapsing
+    /// to cert; partner-facing envs keep the production/sandbox vocabulary.
+    func testToWebValuePassesInternalEnvsThrough() {
         XCTAssertEqual(Environment.sandbox.toWebValue, "sandbox")
         XCTAssertEqual(Environment.production.toWebValue, "production")
         #if DEBUG
-        XCTAssertEqual(Environment.gating.toWebValue, "sandbox")
+        XCTAssertEqual(Environment.dev.toWebValue, "dev")
+        XCTAssertEqual(Environment.gating.toWebValue, "gating")
         #endif
     }
 
@@ -34,7 +38,7 @@ final class EnvironmentTests: XCTestCase {
     /// missing, WebView messages are silently dropped and the e2e suite hangs.
     func testTrustedHostsContainTheHostTheWebViewLoads() {
         #if DEBUG
-        let environments: [Environment] = [.sandbox, .production, .gating]
+        let environments: [Environment] = [.sandbox, .production, .dev, .gating]
         #else
         let environments: [Environment] = [.sandbox, .production]
         #endif
@@ -49,6 +53,15 @@ final class EnvironmentTests: XCTestCase {
     }
 
     #if DEBUG
+    func testDevTrustedHostsAreScopedToDevOnly() {
+        XCTAssertEqual(
+            Environment.dev.trustedHosts,
+            ["sdk-mobile.dev.0hash.com", "web-sdk.dev.0hash.com", "sdk-cdn.dev.0hash.com"]
+        )
+        XCTAssertFalse(Environment.production.trustedHosts.contains("sdk-mobile.dev.0hash.com"))
+        XCTAssertFalse(Environment.sandbox.trustedHosts.contains("sdk-mobile.dev.0hash.com"))
+    }
+
     func testGatingTrustedHostsAreScopedToGatingOnly() {
         XCTAssertEqual(
             Environment.gating.trustedHosts,
