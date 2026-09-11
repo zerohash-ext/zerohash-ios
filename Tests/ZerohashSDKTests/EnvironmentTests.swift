@@ -12,7 +12,7 @@ final class EnvironmentTests: XCTestCase {
         XCTAssertEqual(Environment.sandbox.cdnBaseURL, "https://sdk-cdn.cert.zerohash.com")
         XCTAssertEqual(Environment.production.cdnBaseURL, "https://sdk-cdn.zerohash.com")
         #if DEBUG
-        XCTAssertEqual(Environment.gating.cdnBaseURL, "https://connect-sdk.gating.0hash.com")
+        XCTAssertEqual(Environment.gating.cdnBaseURL, "https://sdk-cdn.gating.0hash.com")
         #endif
     }
 
@@ -50,9 +50,12 @@ final class EnvironmentTests: XCTestCase {
 
     #if DEBUG
     func testGatingTrustedHostsAreScopedToGatingOnly() {
-        XCTAssertEqual(Environment.gating.trustedHosts, ["connect-sdk.gating.0hash.com"])
-        XCTAssertFalse(Environment.production.trustedHosts.contains("connect-sdk.gating.0hash.com"))
-        XCTAssertFalse(Environment.sandbox.trustedHosts.contains("connect-sdk.gating.0hash.com"))
+        XCTAssertEqual(
+            Environment.gating.trustedHosts,
+            ["sdk-mobile.gating.0hash.com", "web-sdk.gating.0hash.com", "sdk-cdn.gating.0hash.com"]
+        )
+        XCTAssertFalse(Environment.production.trustedHosts.contains("sdk-mobile.gating.0hash.com"))
+        XCTAssertFalse(Environment.sandbox.trustedHosts.contains("sdk-mobile.gating.0hash.com"))
     }
     #endif
 }

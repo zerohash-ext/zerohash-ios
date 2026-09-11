@@ -18,7 +18,7 @@ public enum Environment {
             return "https://sdk-mobile.zerohash.com/v1/"
         #if DEBUG
             case .gating:
-                return "https://connect-sdk.gating.0hash.com/v1/"
+                return "https://sdk-mobile.gating.0hash.com/v1/"
         #endif
         }
     }
@@ -31,7 +31,7 @@ public enum Environment {
             return "https://sdk-cdn.zerohash.com"
         #if DEBUG
             case .gating:
-                return "https://connect-sdk.gating.0hash.com"
+                return "https://sdk-cdn.gating.0hash.com"
         #endif
         }
     }
@@ -61,7 +61,10 @@ public enum Environment {
             return ["sdk-mobile.zerohash.com", "web-sdk.zerohash.com", "sdk-cdn.zerohash.com"]
         #if DEBUG
             case .gating:
-                return ["connect-sdk.gating.0hash.com"]
+                return [
+                    "sdk-mobile.gating.0hash.com", "web-sdk.gating.0hash.com",
+                    "sdk-cdn.gating.0hash.com",
+                ]
         #endif
         }
     }
