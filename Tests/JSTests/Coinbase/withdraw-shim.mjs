@@ -22,12 +22,22 @@ const SRC = fileURLToPath(
 // Read and keep the source at module scope, matching shim.mjs. loadWithdraw is
 // called once per test; re-reading 1100 lines each time is pure waste.
 const SOURCE = readFileSync(SRC, "utf8");
+const DOM_HELPERS = readFileSync(
+  fileURLToPath(new URL("../../../Sources/ZerohashSDK/Automation/dom-helpers.js", import.meta.url)),
+  "utf8"
+);
 
 // ECMAScript intrinsics come free inside a VM context. These are the host-provided
 // globals withdraw.js touches at LOAD time, so they are all the sandbox needs.
 // Deliberately absent: Event, DataTransfer, ClipboardEvent, HTMLInputElement.
 //
-const hostGlobals = () => ({ setTimeout, clearTimeout, console });
+const hostGlobals = () => ({
+  setTimeout,
+  clearTimeout,
+  console,
+  // A page realm always has this; failureContext reads location.pathname.
+  location: { pathname: "/send", href: "https://www.coinbase.com/send" }
+});
 
 // window.__zhDom is injected separately in production (dom-helpers.js).
 const domStub = (sleep) => ({
@@ -38,8 +48,14 @@ const domStub = (sleep) => ({
 });
 
 function run(document, { sleep } = {}) {
-  const window = { __zhDom: domStub(sleep) };
-  vm.runInNewContext(SOURCE, { window, document, ...hostGlobals() });
+  // The real dom-helpers.js installs window.__zhDom, so the shared helpers
+  // (testidCensus and friends) are exercised as shipped. Only the timing and
+  // click parts are stubbed, so tests can drive the poll loop.
+  const window = {};
+  const sandbox = { window, document, ...hostGlobals() };
+  vm.runInNewContext(DOM_HELPERS, sandbox);
+  Object.assign(window.__zhDom, domStub(sleep));
+  vm.runInNewContext(SOURCE, sandbox);
   if (!window.__zhWithdraw || !window.__zhWithdraw.__internals) {
     throw new Error("withdraw-shim: window.__zhWithdraw.__internals is missing");
   }
@@ -193,4 +209,12 @@ const classifier = loadWithdraw().internals.classifyPostConfirm;
 /** Convenience: classify a probe without caring about the DOM. */
 export function classify(overrides = {}) {
   return rehome(classifier({ ...baseProbe(), ...overrides }));
+}
+
+/** The shared __zhDom helpers, against a document of your choosing. */
+export function loadDom(documentOptions = {}) {
+  const document = makeDocument(documentOptions);
+  const window = {};
+  vm.runInNewContext(DOM_HELPERS, { window, document, ...hostGlobals() });
+  return { dom: window.__zhDom, document };
 }

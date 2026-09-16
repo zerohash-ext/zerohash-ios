@@ -251,7 +251,11 @@
 
   // Framework-telemetry breadcrumb. No-op unless the native install prelude ran
   // for this dispatch (i.e. telemetry is on); never carries PII.
-  function bc(phase, note) { if (window.__zhTelemetry) window.__zhTelemetry.breadcrumb(phase, note); }
+  // Returns `phase` so a caller can record where it is: `phase = bc("...")`.
+  function bc(phase, note) {
+    if (window.__zhTelemetry) window.__zhTelemetry.breadcrumb(phase, note);
+    return phase;
+  }
 
   function isVisible(el) {
     if (!el) return false;
@@ -380,6 +384,24 @@
     }
     if (all.length > 0) return "loaded";
     return null;
+  }
+
+  // Element families that identify a post-confirm screen.
+  var TESTID_PRIORITY_RE = /^(?:step-|modal|two-factor|risk|scam|passkey|identity|status|code-inputs|one-time-code|send-success|send-preview|send-now|verify-access|start-challenge|policy-restriction|onboarding|no-crypto|error-message)/;
+
+  // Diagnostic for a failed step (AUTH-4511). Never throws; runs from a catch.
+  function failureContext(phase) {
+    var parts = ["step=" + phase];
+    try {
+      parts.push("url=" + location.pathname);
+      parts.push("activeStep=" + readActiveStep());
+      parts.push("modal=" + !!queryVisible(SEL.MODAL_OVERLAY));
+      var census = D.testidCensus(TESTID_PRIORITY_RE);
+      parts.push("total=" + census.total);
+      parts.push("unique=" + census.unique);
+      parts.push("ids=" + census.list);
+    } catch (e) {}
+    return parts.join(" ");
   }
 
   // Desktop shows a direct "Send" quick-action; mobile collapses it into a
@@ -1638,15 +1660,17 @@
   window.__zhWithdraw = {
     // Drive Send → forms → preview → "Send now", then detect & return the 2FA state.
     start: async function (params) {
+      // Current phase, for the catch's diagnostic.
+      var phase = "open-send-modal";
       try {
         var idvReason = await idvBlockedReasonForAction("sends");
         if (idvReason) throw idvBlockedError(idvReason);
-        bc("open-send-modal");
+        phase = bc("open-send-modal");
         await openSendModal();
-        bc("enter-recipient");
+        phase = bc("enter-recipient");
         await enterRecipient(params.address);
         await runSelectionPhase(params);
-        bc("enter-amount");
+        phase = bc("enter-amount");
         await enterAmount(params.amount, params.asset);
         await selectRecipientTypeIfPresent(params.recipientType || "self-custody");
         // Self-transfer: the webapp sends transferDetails.purpose "Transfer to my
@@ -1657,10 +1681,10 @@
           params.transferDetails.purpose === "Transfer to my own account");
         await fillTravelRule(params.travelRule, { selfTransfer: isSelfTransfer });
         await fillTransferDetails(params.transferDetails);
-        bc("confirm-send");
+        phase = bc("confirm-send");
         var details = await confirmAndSend(params.address);
         moduleState().details = details; // persist for continue()
-        bc("detect-2fa");
+        phase = bc("detect-2fa");
         var outcome = await detectAndHandle2fa();
         bc("2fa-outcome", outcome.kind);
         if (outcome.kind === "none") return await finalizeSubmitted(details);
@@ -1686,6 +1710,13 @@
         }
         if (isHoldModalPresent()) {
           return fundsNotAvailableRejection();
+        }
+        // Unclassified failure. The `start-failed [ctx]:` wrapper is parsed
+        // downstream, so keep the shape.
+        var ctx = failureContext(phase);
+        bc("start-failed", ctx);
+        if (e instanceof Error) {
+          e.message = "withdraw/start-failed [" + ctx + "]: " + e.message;
         }
         throw e;
       }
@@ -1733,7 +1764,8 @@
       runSelectionPhase: runSelectionPhase,
       previewRecipientMatches: previewRecipientMatches,
       isHoldModalPresent: isHoldModalPresent,
-      awaitRecipientOrPendingBlock: awaitRecipientOrPendingBlock
+      awaitRecipientOrPendingBlock: awaitRecipientOrPendingBlock,
+      failureContext: failureContext
     }
   };
 })();
