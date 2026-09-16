@@ -48,7 +48,9 @@ class SubViewController: UIViewController, WKNavigationDelegate {
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
 
-        if theme == .system && traitCollection.userInterfaceStyle != previousTraitCollection?.userInterfaceStyle {
+        if theme == .system
+            && traitCollection.userInterfaceStyle != previousTraitCollection?.userInterfaceStyle
+        {
             if theme.shouldUseDarkMode(in: traitCollection) {
                 view.backgroundColor = Theme.darkBackgroundColor
             } else {
@@ -100,7 +102,7 @@ class SubViewController: UIViewController, WKNavigationDelegate {
         }
 
         let host = url.host ?? ""
-        guard environment.trustedHosts.contains(host) else {
+        guard canDisplay(host) else {
             Log.error("[SubViewController] Blocked navigation to untrusted host: \(host)")
             decisionHandler(.cancel)
             return
@@ -141,10 +143,20 @@ class SubViewController: UIViewController, WKNavigationDelegate {
             return
         }
         let host = url.host ?? ""
-        guard environment.trustedHosts.contains(host) else {
+        guard canDisplay(host) else {
             Log.error("[SubViewController] Blocked initial load of untrusted host: \(host)")
             return
         }
         webView.load(URLRequest(url: url))
+    }
+
+    /// Whether the in-app browser may load `host`. Composes the SDK's two host
+    /// trust levels, which are kept as separate lists on purpose:
+    /// - `Environment.trustedHosts` — hosts allowed inside the bridge-privileged
+    ///   WebView (bridge messages, main-frame nav, popups); security-critical.
+    /// - `AgreementHostPolicy` — extra hosts this bridge-less browser may *display*
+    ///   (agreement / legal docs).
+    private func canDisplay(_ host: String) -> Bool {
+        environment.trustedHosts.contains(host) || AgreementHostPolicy.isAllowed(host)
     }
 }
