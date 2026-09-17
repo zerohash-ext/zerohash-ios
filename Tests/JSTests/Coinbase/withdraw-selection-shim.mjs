@@ -265,7 +265,6 @@ function domStub(onSearch) {
     realisticClick: (node) => {
       if (node && typeof node.click === "function") node.click();
     },
-    findButtonByText: () => null,
     setReactValue: (input, value) => {
       input.attrs.value = value;
       (input.typed || (input.typed = [])).push(value);

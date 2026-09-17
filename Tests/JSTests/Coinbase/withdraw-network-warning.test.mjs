@@ -83,43 +83,27 @@ test("findNetworkWarningAck: ignores an ack button inside a faded container", ()
   const { internals, document } = loadSelection();
   document.setContent(l2Step(warningBody(), "inactive"));
   assert.strictEqual(internals.findNetworkWarningAck(), null);
-  assert.strictEqual(internals.findNetworkWarningAck({ allowFallback: true }), null);
 });
 
-// Once notStep masks l2SelectionStep, the testid is the flow's ONLY exit signal,
-// so a Coinbase rename would leave the loop blind. The label fallback covers that —
-// and must match the CURLY apostrophe, so this asserts against ACK_LABEL.
-test("findNetworkWarningAck: falls back to the button label when the testid has drifted", async () => {
+// The testid is the only handle. The label is whatever the account's language
+// renders, so a button carrying it must not resolve on its own.
+test("findNetworkWarningAck: resolves on the testid alone and never on the button label", async () => {
   const { internals, document } = loadSelection();
   document.setContent(l2Step(warningBody({ testid: false, label: ACK_LABEL })));
   assert.strictEqual(internals.findNetworkWarningAck(), null);
-  assert.notStrictEqual(internals.findNetworkWarningAck({ allowFallback: true }), null);
-  assert.strictEqual(
-    await internals.detectNextScreen({ notStep: "l2SelectionStep", fallbackAfterMs: 0, timeoutMs: 500 }),
-    "networkWarning"
-  );
-});
-
-// A live network list is never the warning — without this guard the label fallback
-// could latch onto some other button while the list is still up.
-test("findNetworkWarningAck: refuses the label fallback while the l2 container still holds network cells", async () => {
-  const { internals, document } = loadSelection();
-  document.setContent(
-    l2Step([networkCell("base"), networkCell("ethereum"), el("button", {}, ACK_LABEL)])
-  );
-  assert.strictEqual(internals.findNetworkWarningAck({ allowFallback: true }), null);
-  assert.strictEqual(
-    await internals.detectNextScreen({ fallbackAfterMs: 0, timeoutMs: 500 }),
-    "network"
-  );
-});
-
-// The fallback is gated on a delay so it can't fire mid-transition.
-test("detectNextScreen: does not fire the label fallback before fallbackAfterMs has elapsed", async () => {
-  const { internals, document } = loadSelection();
-  document.setContent(l2Step(warningBody({ testid: false })));
   await assert.rejects(
     internals.detectNextScreen({ notStep: "l2SelectionStep", timeoutMs: 300 }),
     /no-next-screen/
   );
+});
+
+// The label-bearing button sits alongside a live network list, which is the
+// network screen — the ack must not be read out of it.
+test("detectNextScreen: reports network while the l2 container still holds network cells", async () => {
+  const { internals, document } = loadSelection();
+  document.setContent(
+    l2Step([networkCell("base"), networkCell("ethereum"), el("button", {}, ACK_LABEL)])
+  );
+  assert.strictEqual(internals.findNetworkWarningAck(), null);
+  assert.strictEqual(await internals.detectNextScreen({ timeoutMs: 500 }), "network");
 });

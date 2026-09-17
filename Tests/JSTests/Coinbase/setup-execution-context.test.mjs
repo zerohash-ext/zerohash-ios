@@ -11,6 +11,18 @@ const SOURCE = readFileSync(
 const RISK_GATE_RULE =
   '[data-testid="step-riskSelfServeStep-active"] button.cds-IconButton{display:none !important;}';
 
+// Coinbase's resolution-hub banner: one testid, three severities, all hidden.
+const BANNER_RULE = '[data-testid="system-alert-banner"]{display:none !important;}';
+
+/** The CSS text of every stylesheet the asset injected, order-independent. */
+const sheets = (appended) => appended.map((entry) => entry.node.textContent).sort();
+const bothRules = [BANNER_RULE, RISK_GATE_RULE].sort();
+
+/** Source with line comments stripped, so a guard never matches its own rationale. */
+const CODE = SOURCE.split("\n")
+  .map((l) => l.replace(/\/\/.*$/, ""))
+  .join("\n");
+
 /** Runs the real asset against a fake window, so these assert on behaviour. */
 function runSetup({
   origin = "https://www.coinbase.com",
@@ -83,30 +95,59 @@ test("a throwing step does not propagate", () => {
 });
 
 test("hides the risk gate's X and nothing outside that step", () => {
-  const { appended } = runSetup();
+  assert.ok(sheets(runSetup().appended).includes(RISK_GATE_RULE));
+});
 
-  assert.strictEqual(appended.length, 1);
-  assert.strictEqual(appended[0].node.textContent, RISK_GATE_RULE);
+test("hides the Central Resolution Hub banner, every severity", () => {
+  assert.ok(sheets(runSetup().appended).includes(BANNER_RULE));
+});
+
+test("each concern gets its own stylesheet, and there are exactly two", () => {
+  // A third one appearing means a step was added without a test.
+  assert.deepStrictEqual(sheets(runSetup().appended), bothRules);
+});
+
+test("the banner rule targets the banner itself, not the portal that hosts it", () => {
+  // The portal hosts other content too; hiding it would take that with it.
+  const css = sheets(runSetup().appended).join("\n");
+  assert.doesNotMatch(css, /portal-alert-container/);
+  assert.doesNotMatch(css, /portal-modal-container/);
+});
+
+test("the banner rule leaves Coinbase's other banners alone", () => {
+  // The cookie notice (banner-container) and the BR onboarding modal are not ours
+  // to suppress.
+  const css = sheets(runSetup().appended).join("\n");
+  assert.doesNotMatch(css, /banner-container/);
+  assert.doesNotMatch(css, /brazil-onboarding-modal/);
+  assert.doesNotMatch(css, /mobile-cookie-banner/);
+});
+
+test("the banner is hidden, never clicked", () => {
+  // Deliberate: its dismiss button is a real control on the user's account.
+  assert.doesNotMatch(CODE, /undefined-dismiss-btn/);
+  assert.doesNotMatch(CODE, /\.click\(\)/);
 });
 
 test("the fix survives document start, when <head> does not exist yet", () => {
   const { appended, documentElement } = runSetup({ hasHead: false });
 
-  assert.strictEqual(appended.length, 1);
-  assert.strictEqual(appended[0].parent, documentElement);
+  assert.deepStrictEqual(sheets(appended), bothRules);
+  for (const entry of appended) assert.strictEqual(entry.parent, documentElement);
 });
 
 test("the fix lands in <head> when the page already has one", () => {
   const { appended, head } = runSetup({ hasHead: true });
 
-  assert.strictEqual(appended.length, 1);
-  assert.strictEqual(appended[0].parent, head);
+  assert.deepStrictEqual(sheets(appended), bothRules);
+  for (const entry of appended) assert.strictEqual(entry.parent, head);
 });
 
-test("a second run leaves one stylesheet, not two", () => {
-  const { appended } = runSetup({ runs: 2 });
-
-  assert.strictEqual(appended.length, 1);
+test("a second run re-injects nothing", () => {
+  // Each step guards on its own STYLE_ID, so re-injection on a soft navigation is
+  // a no-op rather than a pile of duplicate stylesheets.
+  assert.deepStrictEqual(sheets(runSetup({ runs: 2 }).appended), bothRules);
+  assert.deepStrictEqual(sheets(runSetup({ runs: 5 }).appended), bothRules);
 });
 
 test("a page that merely looks like Coinbase gets no stylesheet", () => {
@@ -127,17 +168,16 @@ test("a DOM that refuses the stylesheet still leaves the upsell dismissed", () =
   assert.deepStrictEqual(result.writes, [["appUpsellDismissed", "true"]]);
 });
 
-test("a failing storage step does not cost us the stylesheet", () => {
+test("a failing storage step does not cost us either stylesheet", () => {
   const { writes, appended } = runSetup({ throwOnSet: true });
 
   assert.deepStrictEqual(writes, []);
-  assert.strictEqual(appended.length, 1);
-  assert.strictEqual(appended[0].node.textContent, RISK_GATE_RULE);
+  assert.deepStrictEqual(sheets(appended), bothRules);
 });
 
-test("the rule is applied as a stylesheet, not rendered as text", () => {
+test("the rules are applied as stylesheets, not rendered as text", () => {
   const { appended } = runSetup();
 
-  assert.strictEqual(appended.length, 1);
-  assert.strictEqual(appended[0].node.tagName, "style");
+  assert.strictEqual(appended.length, 2);
+  for (const entry of appended) assert.strictEqual(entry.node.tagName, "style");
 });

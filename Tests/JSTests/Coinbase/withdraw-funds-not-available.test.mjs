@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { test } from "node:test";
-import { loadWithdraw, SEL } from "./withdraw-shim.mjs";
+import { loadWithdraw, rehome, SEL } from "./withdraw-shim.mjs";
 
 const REJECTED_HOLD = { state: "rejected", reason: "funds_not_available" };
 
@@ -35,6 +35,19 @@ test("a blocking prior transfer still outranks the hold step", async () => {
   await assert.rejects(internals.awaitRecipientOrPendingBlock(), (err) => {
     assert.ok(err.zhPendingTransfer, "expected the pending-transfer tag to win");
     assert.strictEqual(err.zhFundsNotAvailable, undefined);
+    return true;
+  });
+});
+
+test("a blocking prior transfer reports all three detail keys, every value null", async () => {
+  // Partner apps decode a fixed shape, so the keys outlive their values.
+  const { internals } = loadWithdraw({ present: [SEL.STEP_PREVIOUS_TRANSFER] });
+  await assert.rejects(internals.awaitRecipientOrPendingBlock(), (err) => {
+    assert.deepStrictEqual(rehome(err.zhPendingTransfer), {
+      amount: null,
+      recipient: null,
+      completeBefore: null
+    });
     return true;
   });
 });

@@ -24,7 +24,7 @@ test("dismissNetworkWarning: acknowledges the warning and confirms the flow adva
 
   await internals.dismissNetworkWarning({ clearMs: 2000 });
 
-  assert.strictEqual(internals.findNetworkWarningAck({ allowFallback: true }), null);
+  assert.strictEqual(internals.findNetworkWarningAck(), null);
   assert.strictEqual(
     await internals.detectNextScreen({ notStep: "l2SelectionStep", timeoutMs: 300 }),
     "amount"
@@ -45,7 +45,7 @@ test("dismissNetworkWarning: retries the click when the first one doesn't take",
   await internals.dismissNetworkWarning({ clearMs: 300 });
 
   assert.strictEqual(clicks, 2);
-  assert.strictEqual(internals.findNetworkWarningAck({ allowFallback: true }), null);
+  assert.strictEqual(internals.findNetworkWarningAck(), null);
 });
 
 // The selection loop owns the retry budget, so a stuck warning must NOT throw here.

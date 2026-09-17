@@ -39,22 +39,22 @@ const hostGlobals = () => ({
   location: { pathname: "/send", href: "https://www.coinbase.com/send" }
 });
 
-// window.__zhDom is injected separately in production (dom-helpers.js).
-const domStub = (sleep) => ({
+// `realisticClick` is injectable like `sleep`, so a test sees which element
+// was clicked, and that it went through the synthetic-event path.
+const domStub = (sleep, realisticClick) => ({
   sleep: sleep || (() => Promise.resolve()),
   waitFor: () => Promise.reject(new Error("withdraw-shim: waitFor is not stubbed")),
-  realisticClick: () => {},
-  findButtonByText: () => null
+  realisticClick: realisticClick || (() => {})
 });
 
-function run(document, { sleep } = {}) {
+function run(document, { sleep, realisticClick } = {}) {
   // The real dom-helpers.js installs window.__zhDom, so the shared helpers
   // (testidCensus and friends) are exercised as shipped. Only the timing and
   // click parts are stubbed, so tests can drive the poll loop.
   const window = {};
   const sandbox = { window, document, ...hostGlobals() };
   vm.runInNewContext(DOM_HELPERS, sandbox);
-  Object.assign(window.__zhDom, domStub(sleep));
+  Object.assign(window.__zhDom, domStub(sleep, realisticClick));
   vm.runInNewContext(SOURCE, sandbox);
   if (!window.__zhWithdraw || !window.__zhWithdraw.__internals) {
     throw new Error("withdraw-shim: window.__zhWithdraw.__internals is missing");
@@ -91,9 +91,11 @@ export const SEL = run(inertDocument()).__zhWithdraw.__internals.SEL;
  * @param {object}   opts
  * @param {string[]} opts.present     selectors that should match a visible element
  * @param {object}   opts.childCounts key -> element.children.length (default 0)
+ * @param {object}   opts.texts       selector -> innerText (default ""), for the
+ *                                    readers that classify Coinbase's copy
  * @param {string[]} opts.activeSteps data-testid values returned for SEL.STEP_ACTIVE
  */
-export function makeDocument({ present = [], childCounts = {}, activeSteps = [] } = {}) {
+export function makeDocument({ present = [], childCounts = {}, texts = {}, activeSteps = [] } = {}) {
   const element = (key) => ({
     // Not a DOM property. It records which selector produced this element, so a
     // test can assert WHICH of several candidate rows was chosen rather than
@@ -116,8 +118,8 @@ export function makeDocument({ present = [], childCounts = {}, activeSteps = [] 
     closest: () => element(key + " (ancestor)"),
     click() {},
     focus() {},
-    textContent: "",
-    innerText: ""
+    textContent: texts[key] ?? "",
+    innerText: texts[key] ?? ""
   });
 
   const stepElement = (testid) => ({
@@ -152,9 +154,7 @@ export function makeDocument({ present = [], childCounts = {}, activeSteps = [] 
  * Runs withdraw.js against a fresh mutable document.
  *
  * @param {object} documentOptions passed to makeDocument
- * @param {object} hooks           { sleep } — injected as window.__zhDom.sleep, so
- *                                 a test can count polls and mutate the document
- *                                 between them
+ * @param {object} hooks           { sleep, realisticClick } injected onto window.__zhDom
  * @returns {{ internals, window, document }} `window` lets a test preset
  *          window.__zhWithdrawState; `document` exposes the live `present` and
  *          `activeSteps` Sets.
