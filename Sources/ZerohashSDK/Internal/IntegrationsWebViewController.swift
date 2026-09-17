@@ -276,7 +276,10 @@ class IntegrationsWebViewController: UIViewController,
     }
 
     private func setupLoadingManager() {
-        loadingManager = WebViewLoadingManager(parentView: view, theme: theme)
+        // Brand the pre-loader from the JWT before it appears, so AUTH Standalone
+        // shows Connect dots straight away instead of flashing zerohash green.
+        let loaderBrand = LoaderBrand.resolve(jwt: jwt, appIdentifier: appIdentifier)
+        loadingManager = WebViewLoadingManager(parentView: view, theme: theme, brand: loaderBrand)
         loadingManager.delegate = self
         loadingManager.setupLoadingView(in: traitCollection)
     }

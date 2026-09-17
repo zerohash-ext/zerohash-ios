@@ -19,10 +19,31 @@ class WebViewLoadingManager {
     private var dots: [UIView] = []
     private var closeButton: UIButton!
     private let theme: Theme
+    private let brand: LoaderBrand
 
-    init(parentView: UIView, theme: Theme) {
+    init(parentView: UIView, theme: Theme, brand: LoaderBrand = .zerohash) {
         self.parentView = parentView
         self.theme = theme
+        self.brand = brand
+    }
+
+    /// The three-dot ramp for the active brand, mirroring the web SDK's
+    /// `ProcessingDots` palettes.
+    private var dotColors: [UIColor] {
+        switch brand {
+        case .zerohash:
+            return [
+                UIColor(red: 204.0 / 255.0, green: 255.0 / 255.0, blue: 208.0 / 255.0, alpha: 1.0),  // #CCFFD0
+                UIColor(red: 171.0 / 255.0, green: 249.0 / 255.0, blue: 177.0 / 255.0, alpha: 1.0),  // #ABF9B1
+                UIColor(red: 143.0 / 255.0, green: 235.0 / 255.0, blue: 150.0 / 255.0, alpha: 1.0),  // #8FEB96
+            ]
+        case .connect:
+            return [
+                UIColor(red: 252.0 / 255.0, green: 252.0 / 255.0, blue: 153.0 / 255.0, alpha: 1.0),  // #FCFC99
+                UIColor(red: 242.0 / 255.0, green: 240.0 / 255.0, blue: 125.0 / 255.0, alpha: 1.0),  // #F2F07D
+                UIColor(red: 240.0 / 255.0, green: 213.0 / 255.0, blue: 62.0 / 255.0, alpha: 1.0),  // #F0D53E
+            ]
+        }
     }
 
     func setupLoadingView(in traitCollection: UITraitCollection) {
@@ -41,11 +62,7 @@ class WebViewLoadingManager {
         dotsContainer.translatesAutoresizingMaskIntoConstraints = false
 
         let dotSize = Constants.LoadingAnimation.dotSize
-        let dotColors = [
-            UIColor(red: 204.0/255.0, green: 255.0/255.0, blue: 208.0/255.0, alpha: 1.0), // #CCFFD0
-            UIColor(red: 171.0/255.0, green: 249.0/255.0, blue: 177.0/255.0, alpha: 1.0), // #ABF9B1
-            UIColor(red: 143.0/255.0, green: 235.0/255.0, blue: 150.0/255.0, alpha: 1.0), // #8FEB96
-        ]
+        let dotColors = self.dotColors
 
         for i in 0..<3 {
             let dot = UIView()
