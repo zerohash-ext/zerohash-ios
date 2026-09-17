@@ -11,6 +11,12 @@ public enum Environment {
         /// INTERNAL TESTING ONLY — pre-release gating environment for the XCUITest
         /// e2e suite (AUTH-3839). Compiled out of Release builds — partners never see it.
         case gating
+        /// INTERNAL TESTING ONLY — loads a locally-served `/mobile` shell + `*-web`
+        /// bundles (the SDK developer's unpublished web changes) while the shell's
+        /// vite proxy forwards API calls to the dev backend. Compiled out of
+        /// Release builds — partners never see it. Requires the consuming app to
+        /// allow cleartext localhost (ATS `NSAllowsLocalNetworking`).
+        case local
     #endif
 
     var baseURL: String {
@@ -24,6 +30,9 @@ public enum Environment {
                 return "https://sdk-mobile.dev.0hash.com/v1/"
             case .gating:
                 return "https://sdk-mobile.gating.0hash.com/v1/"
+            case .local:
+                // Native calls hit dev; the local shell proxies to dev too.
+                return "https://sdk-mobile.dev.0hash.com/v1/"
         #endif
         }
     }
@@ -39,6 +48,10 @@ public enum Environment {
                 return "https://sdk-cdn.dev.0hash.com"
             case .gating:
                 return "https://sdk-cdn.gating.0hash.com"
+            case .local:
+                // The `/mobile` shell served by `nx run mobile:dev` (vite, base
+                // `/mobile`). On a physical device, replace with the Mac's LAN IP.
+                return "http://localhost:4200"
         #endif
         }
     }
@@ -56,6 +69,9 @@ public enum Environment {
         #if DEBUG
             case .dev: return "dev"
             case .gating: return "gating"
+            // 'local' makes the web app resolve `*-web` bundles from the local
+            // vite host (localhost:5173) and run in local mode (proxied to dev).
+            case .local: return "local"
         #endif
         }
     }
@@ -81,6 +97,11 @@ public enum Environment {
                     "sdk-mobile.gating.0hash.com", "web-sdk.gating.0hash.com",
                     "sdk-cdn.gating.0hash.com",
                 ]
+            case .local:
+                // Both the `/mobile` shell (:4200) and the `*-web` bundles (:5173)
+                // are served under the `localhost` origin; `securityOrigin.host`
+                // drops the port. `127.0.0.1` covers the alternate loopback form.
+                return ["localhost", "127.0.0.1"]
         #endif
         }
     }
