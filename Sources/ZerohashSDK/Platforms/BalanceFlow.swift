@@ -13,7 +13,8 @@ public struct AssetBalance: Codable, Equatable, Sendable {
     public let notional: String
     /// Display fiat currency for the notional (crypto: e.g. "USD"; cash: account-wide or nil).
     public let currency: String?
-    /// Crypto only: staking.summary.totalStakedPercent * 100 as a string; cash: nil.
+    /// Percent of `amount` that cannot be withdrawn, as a decimal string with no
+    /// "%" sign (e.g. "40"), or nil when nothing is locked.
     public let totalStakedPercent: String?
     /// Currently always nil in this code path.
     public let precision: Int?
@@ -38,6 +39,29 @@ public struct AssetBalance: Codable, Equatable, Sendable {
         self.totalStakedPercent = totalStakedPercent
         self.precision = precision
         self.extractedAt = extractedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case key, label, amount, notional, currency, totalStakedPercent, precision, extractedAt
+    }
+
+    /// Written out by hand because the synthesized conformance uses
+    /// `encodeIfPresent`, which drops a key whose value is nil. The contract
+    /// types these as `T | null`, and a missing key is not the same as null to
+    /// the consumer.
+    ///
+    /// Decoding stays synthesized: `decodeIfPresent` accepts both shapes, so
+    /// rows written by an older build still round-trip.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(key, forKey: .key)
+        try container.encode(label, forKey: .label)
+        try container.encode(amount, forKey: .amount)
+        try container.encode(notional, forKey: .notional)
+        try container.encode(currency, forKey: .currency)
+        try container.encode(totalStakedPercent, forKey: .totalStakedPercent)
+        try container.encode(precision, forKey: .precision)
+        try container.encode(extractedAt, forKey: .extractedAt)
     }
 }
 
