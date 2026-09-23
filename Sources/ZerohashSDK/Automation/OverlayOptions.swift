@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// The three dot-fill colors of the loading overlay, as CSS hex strings
@@ -14,15 +15,49 @@ public struct OverlayColors: Equatable, Sendable {
     }
 }
 
-/// The brand whose palette + "Powered by" mark the overlay renders.
-/// Mirrored from the Browser extension implementation. 
-/// The brand is the *single source of truth* for the dot
-/// palette and the footer logo: callers do not supply colors directly anymore
+/// Vertical alignment of the "Powered by" / "Secured by" row against the
+/// brand mark. Single-line marks (`connect`, `zerohash`) sit centered next to
+/// the label; the two-tier "Connect by zerohash" wordmark used by
+/// `securedConnect` is taller than the label and pairs with a top-aligned row
+/// instead (`align-items: flex-start` in the web overlay's CSS).
+public enum FooterAlignment: Equatable, Sendable {
+    case center
+    case top
+}
+
+/// The resolved theme for a brand: dot palette, footer mark asset, prefix
+/// label, mark height, and row alignment. Mirrors `BRANDING_THEMES`
+/// (types.ts:150) plus the CSS overrides in `overlay.ts` that vary height
+/// and alignment per brand (single-line marks vs the two-tier wordmark).
+public struct BrandTheme: Equatable, Sendable {
+    public let colors: OverlayColors
+    /// Imageset name in `Resources/Media.xcassets`, loaded from `Bundle.module`.
+    public let markAssetName: String
+    /// Footer prefix — "Powered by" for the single-line brands, "Secured by"
+    /// for the two-tier "Connect by zerohash" wordmark.
+    public let footerLabel: String
+    /// Rendered height of the mark (points). 14pt for the single-line marks,
+    /// 28pt for the taller two-tier wordmark.
+    public let markHeightPt: CGFloat
+    /// How the label + mark align vertically inside the footer row.
+    public let footerAlignment: FooterAlignment
+}
+
+/// The brand whose palette + footer lockup the overlay renders.
+/// Mirrored from the Browser extension implementation.
+/// The brand is the *single source of truth* for the dot palette and the
+/// footer lockup (mark + prefix): callers do not supply colors directly anymore
 /// (matching `resolveOverlayOptions`, which derives `colors` purely from the
 /// brand). `zerohash` is the default.
+///
+/// `securedConnect` mirrors zerohash-sdk's `SecuredByConnectFooter` — the same
+/// Connect palette as `.connect`, but swaps the Connect mark for the
+/// "Connect by zerohash" wordmark under a "Secured by" prefix. Its wire value
+/// is the hyphenated `secured-connect` (matching the web contract).
 public enum Brand: String, Equatable, Sendable, CaseIterable {
     case connect
     case zerohash
+    case securedConnect = "secured-connect"
 
     /// The default brand applied when the host omits or sends an unknown value.
     /// zerohash SDK: default to the zerohash mark/palette (connect-ios defaults
@@ -38,19 +73,39 @@ public enum Brand: String, Equatable, Sendable, CaseIterable {
         return brand
     }
 
-    /// The resolved theme — dot palette + footer mark asset — for this brand.
-    /// Mirrors `BRANDING_THEMES` (types.ts:150). The asset names refer to
-    /// imagesets in `Resources/Media.xcassets`, loaded from `Bundle.module`;
-    /// they are the native counterpart of the extension's web-accessible
-    /// `connect-mark.svg` / `zerohash-mark.svg`.
-    public var theme: (colors: OverlayColors, markAssetName: String) {
+    /// The resolved theme for this brand. The asset names refer to imagesets in
+    /// `Resources/Media.xcassets`, loaded from `Bundle.module`; they are the
+    /// native counterpart of the extension's web-accessible
+    /// `connect-mark.svg` / `zerohash-mark.svg` / `connect-by-zerohash-mark.svg`.
+    public var theme: BrandTheme {
         switch self {
         case .connect:
-            return (OverlayColors(left: "#FCFC99", middle: "#F2F07D", right: "#F0D53E"),
-                    "connect-mark")
+            return BrandTheme(
+                colors: OverlayColors(left: "#FCFC99", middle: "#F2F07D", right: "#F0D53E"),
+                markAssetName: "connect-mark",
+                footerLabel: "Powered by",
+                markHeightPt: 14,
+                footerAlignment: .center
+            )
         case .zerohash:
-            return (OverlayColors(left: "#CCFFD0", middle: "#ABF9B1", right: "#8FEB96"),
-                    "zerohash-mark")
+            return BrandTheme(
+                colors: OverlayColors(left: "#CCFFD0", middle: "#ABF9B1", right: "#8FEB96"),
+                markAssetName: "zerohash-mark",
+                footerLabel: "Powered by",
+                markHeightPt: 14,
+                footerAlignment: .center
+            )
+        case .securedConnect:
+            // Same Connect palette as `.connect`; the difference is the two-tier
+            // wordmark, the "Secured by" prefix, the taller (28pt) mark, and the
+            // top-aligned row that pairs with a two-tier lockup.
+            return BrandTheme(
+                colors: OverlayColors(left: "#FCFC99", middle: "#F2F07D", right: "#F0D53E"),
+                markAssetName: "connect-by-zerohash-mark",
+                footerLabel: "Secured by",
+                markHeightPt: 28,
+                footerAlignment: .top
+            )
         }
     }
 }
@@ -63,9 +118,8 @@ public enum Brand: String, Equatable, Sendable, CaseIterable {
 /// `cycleMs`; `branding` selects the dot palette and footer mark).
 ///
 /// Note: `colors` is derived from `brand` (never supplied directly) and
-/// `assetUrl` is intentionally absent — the "Powered by" mark is a local SDK
-/// concern resolved from `brand.theme.markAssetName`, not part of the wire
-/// payload.
+/// `assetUrl` is intentionally absent — the footer mark is a local SDK concern
+/// resolved from `brand.theme.markAssetName`, not part of the wire payload.
 public struct OverlayOptions: Equatable, Sendable {
     public let titles: [String]
     public let subtitles: [String]

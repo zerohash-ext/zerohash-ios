@@ -5,8 +5,8 @@ import UIKit
 ///
 /// This is the native UIKit counterpart of the extension's injected overlay: a
 /// white full-bleed background, a centered three-dot loader (using the three
-/// `colors`), a title + subtitle, and a "Powered by <brand>" footer whose
-/// mark is chosen by `options.brand`.
+/// `colors`), a title + subtitle, and a footer lockup whose prefix ("Powered
+/// by" / "Secured by") + mark are chosen by `options.brand.theme`.
 ///
 /// Titles/subtitles cycle in parallel every `cycleMs` when more than one
 /// message is supplied; only the line whose text actually changed fades.
@@ -52,17 +52,12 @@ final class LoadingOverlayView: UIView {
         static let dotSpacing: CGFloat = Constants.LoadingAnimation.dotSpacing  // --dot-spacing
         static let stageGap: CGFloat = 56       // gap between loader and text
         static let textGap: CGFloat = 6         // gap between title and subtitle
-        // Gap between "Powered by" and the mark. The reference uses 8px, but it
-        // never trims its SVGs, so its 8px sits against the asset's padded edge;
-        // we trim to the first opaque pixel, making this a *true* gap — so a
-        // slightly smaller value matches the reference's visual spacing.
+        // Gap between the footer prefix ("Powered by" / "Secured by") and the
+        // mark. The reference uses 8px, but it never trims its SVGs, so its 8px
+        // sits against the asset's padded edge; we trim to the first opaque
+        // pixel, making this a *true* gap — so a slightly smaller value matches
+        // the reference's visual spacing.
         static let footerGap: CGFloat = 6
-        // Height of the *trimmed* glyph (transparent margins removed), so this is
-        // the true visible mark height. Set to the size the mark previously
-        // rendered at: the connect glyph fills ~40% of its 28pt viewBox, i.e.
-        // ~11.3pt visible, so trimming + this constant preserves that size while
-        // fixing the vertical centering.
-        static let footerMarkHeight: CGFloat = 11.3
         static let footerMarkOpticalRise: CGFloat = 0 // residual up-nudge if the centered glyph still reads low vs the text caps
         static let fadeDuration: TimeInterval = 0.25
     }
@@ -178,10 +173,16 @@ final class LoadingOverlayView: UIView {
     }
 
     /// Footer mirroring overlay.ts's `.zeroauth-footer`: a hairline top border,
-    /// then a centered row of "Powered by" + the brand mark (28pt tall, aspect
-    /// preserved, 8pt gap). If the mark asset can't be loaded we fall back to
-    /// the text alone, matching overlay.ts's `onerror="this.remove()"`.
+    /// then a row of `<footerLabel>` + the brand mark (height + row alignment
+    /// come from the brand theme; 8pt gap). The single-line `connect` /
+    /// `zerohash` marks render at 14pt centered next to a "Powered by" label;
+    /// `securedConnect` renders the two-tier "Connect by zerohash" wordmark at
+    /// 28pt top-aligned next to a "Secured by" label. If the mark asset can't be
+    /// loaded we fall back to the text alone, matching overlay.ts's
+    /// `onerror="this.remove()"`.
     private func makeFooter() -> UIView {
+        let theme = options.brand.theme
+
         let footer = UIView()
         footer.translatesAutoresizingMaskIntoConstraints = false
 
@@ -190,30 +191,32 @@ final class LoadingOverlayView: UIView {
         border.translatesAutoresizingMaskIntoConstraints = false
         footer.addSubview(border)
 
-        // Centered "Powered by" + mark row (CSS `display:flex; gap:8px`).
+        // `<prefix>` + mark row (CSS `display:flex; gap:8px`). The two-tier
+        // "Connect by zerohash" wordmark used by `securedConnect` is taller
+        // than the label, so its row is top-aligned (matches overlay.ts's
+        // `align-items: flex-start`); every other brand stays centered.
         let row = UIStackView()
         row.translatesAutoresizingMaskIntoConstraints = false
         row.axis = .horizontal
-        row.alignment = .center
+        row.alignment = (theme.footerAlignment == .top) ? .top : .center
         row.spacing = Metrics.footerGap
         footer.addSubview(row)
 
         let label = footerLabel
-        label.text = "Powered by"
+        label.text = theme.footerLabel
         label.font = .systemFont(ofSize: 14, weight: .regular)
         // Text color set by `applyTheme`.
         row.addArrangedSubview(label)
 
         // Brand mark from the asset catalog (vector, rendered with its own
-        // colors). The source SVGs center a small glyph inside a much larger
-        // viewBox (the connect glyph is only ~40% of its box height; the zerohash
-        // mark sits in a wide, tall box), so rendering the padded box would leave
-        // the visible glyph floating high and offset from the text. We trim the
-        // transparent margins on all four sides so the image box *is* the glyph:
-        // `footerGap` becomes the true horizontal gap and the glyph's geometric
-        // center is its visual center, so `.center` alignment lands it level with
-        // the "Powered by" text. `footerMarkHeight` then sizes the bare glyph.
-        if let raw = UIImage(named: options.brand.theme.markAssetName,
+        // colors). Each source SVG's viewBox is tightened to the artwork's true
+        // content bbox (matching the web overlay's public assets), so `footerGap`
+        // is the true horizontal gap and the image box's center is the
+        // artwork's visual center. `trimmedToOpaqueBounds()` remains as a
+        // defensive pass so any future padded asset still lands correctly.
+        // `theme.markHeightPt` sizes the bare mark — 14pt for the single-line
+        // marks, 28pt for the taller two-tier wordmark.
+        if let raw = UIImage(named: theme.markAssetName,
                              in: .module, compatibleWith: nil) {
             let mark = raw.trimmedToOpaqueBounds() ?? raw
             markBaseImage = mark
@@ -231,7 +234,7 @@ final class LoadingOverlayView: UIView {
             markImageView = imageView
             let aspect = mark.size.width / mark.size.height
             NSLayoutConstraint.activate([
-                imageView.heightAnchor.constraint(equalToConstant: Metrics.footerMarkHeight),
+                imageView.heightAnchor.constraint(equalToConstant: theme.markHeightPt),
                 imageView.widthAnchor.constraint(
                     equalTo: imageView.heightAnchor, multiplier: aspect),
             ])
