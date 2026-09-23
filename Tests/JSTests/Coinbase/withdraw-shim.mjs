@@ -23,7 +23,7 @@ const SRC = fileURLToPath(
 // called once per test; re-reading 1100 lines each time is pure waste.
 const SOURCE = readFileSync(SRC, "utf8");
 const DOM_HELPERS = readFileSync(
-  fileURLToPath(new URL("../../../Sources/ZerohashSDK/Automation/dom-helpers.js", import.meta.url)),
+  fileURLToPath(new URL("../../../Sources/ZerohashSDK/AutomationScripts/shared-dom-helpers.js", import.meta.url)),
   "utf8"
 );
 

@@ -20,7 +20,15 @@ let package = Package(
             dependencies: [],
             resources: [
                 .process("Resources/Media.xcassets"),
-                .process("Automation/dom-helpers.js"),
+                // AutomationScripts/ is generated: `make sync` copies it from the
+                // scraper-mobile-library submodule. Every script moves here as it
+                // is ported (AUTH-4516 to AUTH-4521), and the name gains its venue
+                // prefix from the library's folder layout.
+                //
+                // `.process` flattens resources into the bundle root, so the
+                // loaders keep finding these by name and do not care which
+                // directory they were declared from.
+                .process("AutomationScripts/shared-dom-helpers.js"),
                 .process("Automation/telemetry.js"),
                 .process("Automation/setup-execution-context.js"),
                 .process("Platforms/Coinbase/auth-status.js"),

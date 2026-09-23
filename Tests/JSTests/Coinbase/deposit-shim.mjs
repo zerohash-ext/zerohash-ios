@@ -8,7 +8,7 @@ const SRC = fileURLToPath(
 const SOURCE = readFileSync(SRC, "utf8");
 
 const DOM_HELPERS = readFileSync(
-  fileURLToPath(new URL("../../../Sources/ZerohashSDK/Automation/dom-helpers.js", import.meta.url)),
+  fileURLToPath(new URL("../../../Sources/ZerohashSDK/AutomationScripts/shared-dom-helpers.js", import.meta.url)),
   "utf8"
 );
 

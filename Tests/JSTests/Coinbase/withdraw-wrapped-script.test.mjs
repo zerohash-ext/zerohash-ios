@@ -14,7 +14,7 @@ const srcDir = fileURLToPath(
   new URL("../../../Sources/ZerohashSDK/Platforms/Coinbase/", import.meta.url)
 );
 const domHelpers = readFileSync(
-  fileURLToPath(new URL("../../../Sources/ZerohashSDK/Automation/dom-helpers.js", import.meta.url)),
+  fileURLToPath(new URL("../../../Sources/ZerohashSDK/AutomationScripts/shared-dom-helpers.js", import.meta.url)),
   "utf8"
 );
 const withdraw = readFileSync(srcDir + "withdraw.js", "utf8");
