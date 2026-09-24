@@ -129,7 +129,6 @@ struct AutomationWebViewMessageRouterErrorContractTests {
         #expect(R.isSafeToRetry(operation: "auth.status") == true)
         #expect(R.isSafeToRetry(operation: "auth.login") == true)
         #expect(R.isSafeToRetry(operation: "getBalance") == true)
-
-        #expect(R.isSafeToRetry(operation: "getDepositAddress") == false)
+        #expect(R.isSafeToRetry(operation: "getDepositAddress") == true)
     }
 }

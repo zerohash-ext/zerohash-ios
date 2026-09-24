@@ -287,11 +287,13 @@ final class AutomationWebViewMessageRouter: BridgeEventEmitting {
     }
 
     /// Whether the front-end may AUTOMATICALLY re-issue `operation`. Withdraw is out
-    /// because a re-issue could move funds twice, `getDepositAddress` because a retry
-    /// mints a fresh Lightning invoice. Unknown operations default to unsafe.
+    /// because a re-issue could move funds twice. `getDepositAddress` is in: it only
+    /// re-reads the receive screen, and a retry follows a FAILED attempt, so the
+    /// address never reached the user. On Lightning that orphans an unpaid invoice —
+    /// accepted, rather than dead-ending a transient timeout. Unknown ops are unsafe.
     static func isSafeToRetry(operation: String) -> Bool {
         switch operation {
-        case "auth.login", "auth.status", "getBalance", "core.ping":
+        case "auth.login", "auth.status", "getBalance", "getDepositAddress", "core.ping":
             return true
         default:
             return false

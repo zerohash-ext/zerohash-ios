@@ -13,12 +13,18 @@ final class CoinbaseIdvBlockTests: XCTestCase {
         XCTAssertFalse(AutomationWebViewError.platformThrew("IDV_FAILED").retryable)
     }
 
+    /// `getDepositAddress` IS re-issuable now, so an IDV block staying terminal rests
+    /// entirely on the error being non-transient — the other half of `retryable`.
     @MainActor
-    func testGetDepositAddressIsNeverAutoReIssued() {
-        XCTAssertFalse(
-            AutomationWebViewMessageRouter.isSafeToRetry(operation: "getDepositAddress"),
-            "an IDV block is terminal at the exchange, and a retry also mints a fresh invoice"
-        )
+    func testAnIdvBlockedDepositAddressIsNeverAutoReIssued() {
+        XCTAssertTrue(AutomationWebViewMessageRouter.isSafeToRetry(operation: "getDepositAddress"))
+        for code in ["IDV_PENDING", "IDV_FAILED"] {
+            XCTAssertFalse(
+                AutomationWebViewError.platformThrew(code).retryable
+                    && AutomationWebViewMessageRouter.isSafeToRetry(operation: "getDepositAddress"),
+                "an IDV block is terminal at the exchange — \(code) must not be auto-retried"
+            )
+        }
     }
 
     func testADepositRejectionShapeIsNoLongerAccepted() throws {
