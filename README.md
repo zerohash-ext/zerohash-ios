@@ -24,7 +24,7 @@ The SDK exposes four flows you can present from your app:
 
 ## Requirements
 
-- iOS 17+
+- iOS 15+ (Coinbase and other automation integrations need iOS 17+ and are hidden below it)
 - Swift 6.0+
 - Xcode 16.0+
 

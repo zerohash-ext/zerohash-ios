@@ -133,8 +133,28 @@ class IntegrationsWebViewController: UIViewController,
 
     // MARK: - Setup
 
+    /// Loaded once. A missing resource leaves iOS < 15.4 without the polyfills,
+    /// which degrades rather than breaks on every other version, so it isn't fatal.
+    private static let webKitPolyfillsJS: String? = {
+        guard let url = Bundle.module.url(forResource: "webkit-polyfills", withExtension: "js"),
+              let source = try? String(contentsOf: url, encoding: .utf8)
+        else {
+            Log.error("missing webkit-polyfills.js; built-ins stay unpolyfilled")
+            return nil
+        }
+        return source
+    }()
+
     private func setupWebView() {
         let userContentController = WKUserContentController()
+
+        // The web bundles call built-ins WebKit only ships from iOS 15.4. Every
+        // frame, so the SDK iframes the shell embeds get them too.
+        if #unavailable(iOS 15.4), let polyfills = Self.webKitPolyfillsJS {
+            userContentController.addUserScript(
+                WKUserScript(source: polyfills, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+            )
+        }
 
         #if DEBUG
             let consoleBridge = WKUserScript(

@@ -65,7 +65,11 @@ struct AutomationWebViewMessageRouterErrorContractTests {
         }
     }
 
-    private func makeRouter(seed: [any PlatformIdentity], sink: FakeReplySink) -> AutomationWebViewMessageRouter {
+    private func makeRouter(
+        seed: [any PlatformIdentity],
+        sink: FakeReplySink,
+        isAutomationSupported: Bool = true
+    ) -> AutomationWebViewMessageRouter {
         let registry = PlatformRegistry(default: seed)
         let shared = SharedWebViewConfiguration()
         let host = UIViewController()
@@ -77,8 +81,45 @@ struct AutomationWebViewMessageRouterErrorContractTests {
                     host: host, shared: shared,
                     currentRequestId: reqId, eventEmitter: sink
                 )
-            }
+            },
+            isAutomationSupported: { isAutomationSupported }
         )
+    }
+
+    @Test("core.ping keeps automation integrations visible on a supported OS")
+    func pingClearsHideFlagWhenSupported() async {
+        let sink = FakeReplySink()
+        let router = makeRouter(seed: [], sink: sink)
+        await router.dispatch(ZeroAuthRequest(id: "p1", platform: "cbase", operation: "core.ping"))
+        guard case .object(let fields)? = sink.responses.first?.data else {
+            Issue.record("expected an object payload")
+            return
+        }
+        #expect(fields["ok"] == .bool(true))
+        #expect(fields["hideAutomationIntegrations"] == .bool(false))
+    }
+
+    @Test("core.ping asks the web side to hide automation integrations on an unsupported OS")
+    func pingSetsHideFlagWhenUnsupported() async {
+        let sink = FakeReplySink()
+        let router = makeRouter(seed: [], sink: sink, isAutomationSupported: false)
+        await router.dispatch(ZeroAuthRequest(id: "p2", platform: "cbase", operation: "core.ping"))
+        guard case .object(let fields)? = sink.responses.first?.data else {
+            Issue.record("expected an object payload")
+            return
+        }
+        #expect(fields["hideAutomationIntegrations"] == .bool(true))
+    }
+
+    @Test("automation operations are refused on an unsupported OS")
+    func operationsRefusedWhenUnsupported() async {
+        let sink = FakeReplySink()
+        let router = makeRouter(seed: [StubAuthFlow(id: "cbase")], sink: sink, isAutomationSupported: false)
+        await router.dispatch(ZeroAuthRequest(id: "s3", platform: "cbase", operation: "auth.status"))
+        #expect(sink.responses.count == 1)
+        #expect(sink.responses[0].success == false)
+        #expect(sink.responses[0].error == "operation 'auth.status' not supported on platform 'cbase'")
+        #expect(sink.responses[0].retryable == false)
     }
 
     @Test("a platform timeout reaches the wire naming its stage")

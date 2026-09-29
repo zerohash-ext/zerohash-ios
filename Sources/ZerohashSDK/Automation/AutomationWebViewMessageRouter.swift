@@ -8,6 +8,7 @@ final class AutomationWebViewMessageRouter: BridgeEventEmitting {
     /// Holds the single in-flight withdraw session across bridge requests. The
     /// router delegates `withdraw.*` here so it stays a generic dispatcher.
     private let withdraw: WithdrawCoordinator
+    private let isAutomationSupported: () -> Bool
 
     /// In-flight idempotent reads keyed by "platform/op". Multiple
     /// concurrent dispatches for the same key share the same Task and
@@ -33,12 +34,14 @@ final class AutomationWebViewMessageRouter: BridgeEventEmitting {
         registry: PlatformRegistry,
         sink: AutomationWebViewReplySink,
         executionContextFactory: @escaping (_ requestId: String) -> ExecutionContext,
-        withdraw: WithdrawCoordinator = WithdrawCoordinator()
+        withdraw: WithdrawCoordinator = WithdrawCoordinator(),
+        isAutomationSupported: @escaping () -> Bool = { AutomationSupport.isSupported }
     ) {
         self.registry = registry
         self.sink = sink
         self.executionContextFactory = executionContextFactory
         self.withdraw = withdraw
+        self.isAutomationSupported = isAutomationSupported
     }
 
     nonisolated func emitEvent(correlationId: String, type: String) {
@@ -52,13 +55,27 @@ final class AutomationWebViewMessageRouter: BridgeEventEmitting {
         let start = Date()
 
         // 1. core.ping short-circuit
+        // The web side hides every automation integration when
+        // `hideAutomationIntegrations` is true.
         if req.operation == "core.ping" {
             let v = "ios-\(ZerohashSDK.version)"
-            let data: JSONValue = .object(["ok": .bool(true), "version": .string(v)])
+            let data: JSONValue = .object([
+                "ok": .bool(true),
+                "version": .string(v),
+                "hideAutomationIntegrations": .bool(!isAutomationSupported()),
+            ])
             Log.automation.debug("core.ping OK id=\(req.id, privacy: .public) version=\(v, privacy: .public)")
             sink?.send(response: ZeroAuthResponse(
                 id: req.id, success: true, data: data, error: nil, sessionId: nil
             ))
+            return
+        }
+
+        // Backstop for a web bundle that ignored `hideAutomationIntegrations`.
+        guard isAutomationSupported() else {
+            Log.automation.error("automation unsupported on this OS id=\(req.id, privacy: .public) op=\(req.operation, privacy: .public)")
+            sink?.send(response: errorResponse(
+                id: req.id, error: .unsupported(operation: req.operation, on: req.platform), operation: req.operation))
             return
         }
 

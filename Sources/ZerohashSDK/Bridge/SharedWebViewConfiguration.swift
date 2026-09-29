@@ -5,9 +5,16 @@ import WebKit
 final class SharedWebViewConfiguration {
     let processPool = WKProcessPool()
 
-    let dataStore: WKWebsiteDataStore = WKWebsiteDataStore(
-        forIdentifier: SDKDataStoreIdentifier.shared
-    )
+    /// SDK-private persistent store on iOS 17+. Below that the identified store
+    /// doesn't exist, so fall back to a non-persistent one: it stays private to the
+    /// SDK, and the only thing that needs persistence (the Coinbase session) is
+    /// already off there — keep in sync with `AutomationSupport`.
+    let dataStore: WKWebsiteDataStore = {
+        if #available(iOS 17.0, *) {
+            return WKWebsiteDataStore(forIdentifier: SDKDataStoreIdentifier.shared)
+        }
+        return .nonPersistent()
+    }()
 
     /// Single long-lived offscreen runner. Reusing the same `WKWebView`
     /// across `auth.status` polls eliminates cold-start churn and avoids

@@ -468,7 +468,7 @@ final class OffscreenWebViewRunner: NSObject, WKNavigationDelegate {
     }
 
     /// Awaits Promises returned by `script` via `callAsyncJavaScript`
-    /// (requires iOS 15+; the SDK's deployment target is iOS 17 so this is
+    /// (requires iOS 15+; the SDK's deployment target is iOS 15 so this is
     /// always available).
     ///
     /// `script` must be (or end with) a JavaScript expression. We strip any

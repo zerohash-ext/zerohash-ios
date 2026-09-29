@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "ZerohashSDK",
     platforms: [
-        .iOS(.v17)
+        .iOS(.v15)
     ],
     products: [
         .library(
@@ -31,6 +31,7 @@ let package = Package(
                 .process("AutomationScripts/shared-dom-helpers.js"),
                 .process("Automation/telemetry.js"),
                 .process("Automation/setup-execution-context.js"),
+                .process("Internal/webkit-polyfills.js"),
                 .process("Platforms/Coinbase/auth-status.js"),
                 .process("Platforms/Coinbase/auth-detect-unsupported-2fa.js"),
                 .process("Platforms/Coinbase/auth-signup.js"),
