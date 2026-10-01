@@ -222,6 +222,9 @@ public enum WithdrawRejectReason {
     /// asset or address).
     public static let addressUnsupported = "address_unsupported"
     public static let fundsNotAvailable = "funds_not_available"
+    /// Coinbase showed its "temporarily unavailable" screen before Send now (its
+    /// send flow broke; AUTH-4657). Terminal, no funds moved; trying later may work.
+    public static let sendUnavailable = "send_unavailable"
 }
 
 /// State returned at every pause/terminal point of a withdraw session — a

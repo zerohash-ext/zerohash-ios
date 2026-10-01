@@ -128,7 +128,7 @@ function cappedPolls(document) {
   };
 }
 
-function run(document, params, idvReason) {
+function run(document, params, idvReason, screens, dom) {
   const window = {
     HTMLInputElement: FakeHTMLInputElement,
     HTMLTextAreaElement: FakeHTMLInputElement
@@ -141,9 +141,13 @@ function run(document, params, idvReason) {
         reason === "idv_pending" ? "IDV_PENDING" : reason === "idv_failed" ? "IDV_FAILED" : null
     };
   }
+  // AUTH-4657: tests pass a fake coinbase-screens.js.
+  if (screens) window.__zhCoinbaseScreens = screens;
   const ctx = vm.createContext({ window, document, params, ...hostGlobals() });
   vm.runInContext(DOM_HELPERS, ctx);
   Object.assign(window.__zhDom, cappedPolls(document));
+  // AUTH-4657: a test may replace any __zhDom helper (waits, clicks, $).
+  if (dom) Object.assign(window.__zhDom, dom);
   const started = vm.runInContext(SOURCE, ctx);
   if (started && typeof started.then === "function") started.then(() => {}, () => {});
   if (!window.__zhDeposit || !window.__zhDeposit.__internals) {
@@ -152,20 +156,20 @@ function run(document, params, idvReason) {
   if (!window.__zhDeposit.__internals.SEL) {
     throw new Error("deposit-shim: __internals.SEL is missing — the harness harvests selectors from it");
   }
-  return window;
+  return { window, started };
 }
 
 const inertDocument = () => ({ querySelector: () => null, querySelectorAll: () => [] });
 
-export const SEL = run(inertDocument(), { asset: "BTC" }).__zhDeposit.__internals.SEL;
+export const SEL = run(inertDocument(), { asset: "BTC" }).window.__zhDeposit.__internals.SEL;
 
 /**
  * Runs get-deposit-address.js against a fresh mutable document. Tests drive
  * `__internals.pickAsset` directly, so the IIFE's own `run()` is left unawaited
  * and its rejection swallowed.
  */
-export function loadDeposit(documentOptions = {}, params = {}, idvReason = undefined) {
+export function loadDeposit(documentOptions = {}, params = {}, idvReason = undefined, screens = undefined, dom = undefined) {
   const document = makeDocument(documentOptions);
-  const window = run(document, params, idvReason);
-  return { internals: window.__zhDeposit.__internals, window, document };
+  const { window, started } = run(document, params, idvReason, screens, dom);
+  return { internals: window.__zhDeposit.__internals, window, document, started };
 }

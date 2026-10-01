@@ -22,6 +22,7 @@ const SRC = fileURLToPath(
 // Read and keep the source at module scope, matching shim.mjs. loadWithdraw is
 // called once per test; re-reading 1100 lines each time is pure waste.
 const SOURCE = readFileSync(SRC, "utf8");
+export const WITHDRAW_SOURCE = SOURCE;
 const DOM_HELPERS = readFileSync(
   fileURLToPath(new URL("../../../Sources/ZerohashSDK/AutomationScripts/shared-dom-helpers.js", import.meta.url)),
   "utf8"
@@ -47,7 +48,7 @@ const domStub = (sleep, realisticClick) => ({
   realisticClick: realisticClick || (() => {})
 });
 
-function run(document, { sleep, realisticClick } = {}) {
+function run(document, { sleep, realisticClick, screens } = {}) {
   // The real dom-helpers.js installs window.__zhDom, so the shared helpers
   // (testidCensus and friends) are exercised as shipped. Only the timing and
   // click parts are stubbed, so tests can drive the poll loop.
@@ -55,6 +56,8 @@ function run(document, { sleep, realisticClick } = {}) {
   const sandbox = { window, document, ...hostGlobals() };
   vm.runInNewContext(DOM_HELPERS, sandbox);
   Object.assign(window.__zhDom, domStub(sleep, realisticClick));
+  // AUTH-4657: tests pass a fake coinbase-screens.js.
+  if (screens) window.__zhCoinbaseScreens = screens;
   vm.runInNewContext(SOURCE, sandbox);
   if (!window.__zhWithdraw || !window.__zhWithdraw.__internals) {
     throw new Error("withdraw-shim: window.__zhWithdraw.__internals is missing");

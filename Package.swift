@@ -39,6 +39,7 @@ let package = Package(
                 .process("Platforms/Coinbase/auth-choose-2fa-method.js"),
                 .process("Platforms/Coinbase/get-deposit-address.js"),
                 .process("Platforms/Coinbase/coinbase-idv-gate.js"),
+                .process("Platforms/Coinbase/coinbase-screens.js"),
                 .process("Platforms/Coinbase/get-balance.js"),
                 .process("Platforms/Coinbase/coinbase-balance-queries.js"),
                 .process("Platforms/Coinbase/withdraw.js"),

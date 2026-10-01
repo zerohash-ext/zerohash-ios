@@ -136,7 +136,7 @@ public struct Coinbase: AuthFlow, DepositFlow, BalanceFlow, WithdrawFlow {
         // argument `params` (see `jsonObject`), which marshals it into an in-scope
         // JS variable. It is NEVER interpolated into the script source, so payload
         // values can't break out of a literal and execute as code.
-        let script = "(function(){ \(Self.domHelpersJS); \(Self.idvGateJS); return (\(automation)); })()"
+        let script = "(function(){ \(Self.domHelpersJS); \(Self.idvGateJS); \(Self.screensJS); return (\(automation)); })()"
 
         let raw = try await ctx.runVisibleWebView(
             url: URL(string: "https://www.coinbase.com/receive")!,
@@ -397,13 +397,13 @@ public struct Coinbase: AuthFlow, DepositFlow, BalanceFlow, WithdrawFlow {
     /// The payload is supplied at call time as the bound argument `params`
     /// (see `jsonObject`), not interpolated into this source.
     static let startWithdrawJS =
-        "(function(){ \(domHelpersJS); \(idvGateJS); \(withdrawJS) return window.__zhWithdraw.start(params); })()"
+        "(function(){ \(domHelpersJS); \(idvGateJS); \(screensJS); \(withdrawJS) return window.__zhWithdraw.start(params); })()"
 
     /// The payload is supplied at call time as the bound argument `payload`.
     static let continueWithdrawJS =
-        "(function(){ \(domHelpersJS); \(idvGateJS); \(withdrawJS) return window.__zhWithdraw.continue(payload); })()"
+        "(function(){ \(domHelpersJS); \(idvGateJS); \(screensJS); \(withdrawJS) return window.__zhWithdraw.continue(payload); })()"
 
-    static let cancelWithdrawJS = "(function(){ \(domHelpersJS); \(idvGateJS); \(withdrawJS) return window.__zhWithdraw.cancel(); })()"
+    static let cancelWithdrawJS = "(function(){ \(domHelpersJS); \(idvGateJS); \(screensJS); \(withdrawJS) return window.__zhWithdraw.cancel(); })()"
 
     // MARK: - Bundled JS resource
 
@@ -553,6 +553,21 @@ public struct Coinbase: AuthFlow, DepositFlow, BalanceFlow, WithdrawFlow {
             preconditionFailure(
                 "Coinbase coinbase-idv-gate.js missing from SDK bundle. " +
                 "Check Package.swift declares .process(\"Platforms/Coinbase/coinbase-idv-gate.js\")."
+            )
+        }
+        return body
+    }()
+
+    private static let screensJS: String = {
+        guard let url = resourceBundle.url(
+                forResource: "coinbase-screens",
+                withExtension: "js"
+              ),
+              let body = try? String(contentsOf: url, encoding: .utf8)
+        else {
+            preconditionFailure(
+                "Coinbase coinbase-screens.js missing from SDK bundle. " +
+                "Check Package.swift declares .process(\"Platforms/Coinbase/coinbase-screens.js\")."
             )
         }
         return body
