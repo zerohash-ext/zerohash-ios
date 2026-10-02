@@ -236,8 +236,8 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
 
     func webView(
         _ webView: WKWebView,
-        didReceiveAuthenticationChallenge challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping @MainActor (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
         #if DEBUG
             // Sandbox uses internally-signed certificates that iOS simulators don't trust.

@@ -34,13 +34,13 @@ final class AutomationWebViewMessageRouter: BridgeEventEmitting {
         registry: PlatformRegistry,
         sink: AutomationWebViewReplySink,
         executionContextFactory: @escaping (_ requestId: String) -> ExecutionContext,
-        withdraw: WithdrawCoordinator = WithdrawCoordinator(),
+        withdraw: WithdrawCoordinator? = nil,
         isAutomationSupported: @escaping () -> Bool = { AutomationSupport.isSupported }
     ) {
         self.registry = registry
         self.sink = sink
         self.executionContextFactory = executionContextFactory
-        self.withdraw = withdraw
+        self.withdraw = withdraw ?? WithdrawCoordinator()
         self.isAutomationSupported = isAutomationSupported
     }
 
