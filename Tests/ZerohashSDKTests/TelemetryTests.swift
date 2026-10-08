@@ -83,8 +83,6 @@ struct TelemetryTests {
     @Test("timeline is ordered by (at, realmRank, seq) with seq renumbered 1..N")
     func ordersTimeline() {
         let collector = TelemetryCollector()
-        // Pushed out of order; build must sort ascending by `at`. Distinguished by
-        // `phase` since the draft schema admits one event name (see InjectedDraft).
         collector.pushDraftJson(#"{"event_name":"extension_handler_phase_reached","phase":"b","at":2000,"seq":5,"realm":"injected"}"#)
         collector.pushDraftJson(#"{"event_name":"extension_handler_phase_reached","phase":"a","at":1000,"seq":9,"realm":"injected"}"#)
 
@@ -110,5 +108,103 @@ struct TelemetryTests {
         #expect(AutomationWebViewMessageRouter.telemetryFlow(for: "withdraw.cancel") == "session_close")
         #expect(AutomationWebViewMessageRouter.telemetryFlow(for: "getBalance") == "single_shot")
         #expect(AutomationWebViewMessageRouter.telemetryFlow(for: "getDepositAddress") == "single_shot")
+    }
+
+    @Test("auth_profile_* drafts pass with their declared fields only (AUTH-4685)")
+    func profileDraftsKeepDeclaredFields() throws {
+        let collector = TelemetryCollector()
+        collector.pushDraftJson(#"""
+        {"event_name":"auth_profile_attempt","attempt":1,"outcome":"timeout","http_status":504,
+         "latency_ms":4001.5,"firstName":"Jane","phase":"open-modal","error":"PROFILE_INDETERMINATE",
+         "at":1000,"seq":1}
+        """#)
+        collector.pushDraftJson(#"""
+        {"event_name":"auth_profile_result","outcome":"timeout","attempts":3,"total_ms":13600,
+         "error":"PROFILE_INDETERMINATE","userId":"u-1","http_status":504,"at":2000,"seq":2}
+        """#)
+
+        let rows = collector.build(dims: TelemetryDims(requestId: "r", platformId: "cbase", operation: "auth.status"))
+        try #require(rows.count == 2)
+        let attempt = try #require(obj(rows[0]))
+        let result = try #require(obj(rows[1]))
+
+        #expect(str(attempt["event_name"]) == "auth_profile_attempt")
+        #expect(num(attempt["attempt"]) == 1)
+        #expect(str(attempt["outcome"]) == "timeout")
+        #expect(num(attempt["http_status"]) == 504)
+        #expect(num(attempt["latency_ms"]) == 4001.5)
+        #expect(attempt["firstName"] == nil)
+        #expect(attempt["phase"] == nil)
+        #expect(attempt["error"] == nil)
+
+        #expect(str(result["event_name"]) == "auth_profile_result")
+        #expect(str(result["outcome"]) == "timeout")
+        #expect(num(result["attempts"]) == 3)
+        #expect(num(result["total_ms"]) == 13600)
+        #expect(str(result["error"]) == "PROFILE_INDETERMINATE")
+        #expect(result["userId"] == nil)
+        #expect(result["http_status"] == nil)
+    }
+
+    @Test("a phase draft drops the profile fields it does not declare")
+    func phaseDraftDropsProfileFields() throws {
+        let collector = TelemetryCollector()
+        collector.pushDraftJson(#"""
+        {"event_name":"extension_handler_phase_reached","phase":"open-modal","outcome":"ok",
+         "error":"PROFILE_INCOMPLETE","attempt":1,"at":1000,"seq":1}
+        """#)
+
+        let rows = collector.build(dims: TelemetryDims(requestId: "r", platformId: "cbase", operation: "op"))
+        try #require(rows.count == 1)
+        let row = try #require(obj(rows[0]))
+
+        #expect(str(row["phase"]) == "open-modal")
+        #expect(row["outcome"] == nil)
+        #expect(row["error"] == nil)
+        #expect(row["attempt"] == nil)
+    }
+
+    @Test("auth_profile_* drafts with a forged outcome or error, or a missing required field, are dropped")
+    func forgedProfileDraftsDropped() {
+        let collector = TelemetryCollector()
+        collector.pushDraftJson(#"{"event_name":"auth_profile_attempt","attempt":1,"outcome":"Jane Doe","at":1}"#)
+        collector.pushDraftJson(#"{"event_name":"auth_profile_attempt","outcome":"ok","at":2}"#)
+        collector.pushDraftJson(#"{"event_name":"auth_profile_attempt","attempt":1,"at":3}"#)
+        collector.pushDraftJson(#"{"event_name":"auth_profile_result","outcome":"Jane Doe","at":4}"#)
+        collector.pushDraftJson(#"{"event_name":"auth_profile_result","outcome":"timeout","error":"Jane Doe","at":5}"#)
+        collector.pushDraftJson(#"{"event_name":"auth_profile_result","attempts":3,"at":6}"#)
+        collector.pushDraftJson(#"{"event_name":"auth_profile_forged","outcome":"ok","at":7}"#)
+
+        #expect(collector.isEmpty)
+    }
+
+    @Test("an ok auth_profile_result without an error is kept with no error key")
+    func okProfileResultKeptWithoutError() throws {
+        let collector = TelemetryCollector()
+        collector.pushDraftJson(#"""
+        {"event_name":"auth_profile_result","outcome":"ok","attempts":1,"total_ms":120,"at":1}
+        """#)
+
+        let rows = collector.build(dims: TelemetryDims(requestId: "r", platformId: "cbase", operation: "auth.status"))
+        try #require(rows.count == 1)
+        let row = try #require(obj(rows[0]))
+
+        #expect(str(row["outcome"]) == "ok")
+        #expect(row["error"] == nil)
+    }
+
+    @Test("an auth_profile_attempt with a null http_status is kept with no http_status key")
+    func nullStatusProfileAttemptKept() throws {
+        let collector = TelemetryCollector()
+        collector.pushDraftJson(#"""
+        {"event_name":"auth_profile_attempt","attempt":1,"outcome":"timeout","http_status":null,"at":1}
+        """#)
+
+        let rows = collector.build(dims: TelemetryDims(requestId: "r", platformId: "cbase", operation: "auth.status"))
+        try #require(rows.count == 1)
+        let row = try #require(obj(rows[0]))
+
+        #expect(str(row["outcome"]) == "timeout")
+        #expect(row["http_status"] == nil)
     }
 }

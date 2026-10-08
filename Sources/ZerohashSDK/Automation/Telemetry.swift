@@ -48,31 +48,110 @@ func telemetrySettledRow(outcome: String, totalMs: Int) -> [String: JSONValue] {
 /// The one shape the page may post. The `zhTelemetry` handler is open to any page
 /// script, so decoding into this struct drops every field we don't declare.
 private struct InjectedDraft: Decodable {
-    /// Our scripts emit exactly one event, via `__zhTelemetry.breadcrumb`. Any other
-    /// event_name (a forged type) is dropped whole.
     static let allowedEvent = "extension_handler_phase_reached"
     /// Blurt guard: cap strings so a field can't smuggle a large payload.
     static let maxStringLength = 256
+    static let profileAttemptEvent = "auth_profile_attempt"
+    static let profileResultEvent = "auth_profile_result"
 
     let event_name: String
     let phase: String?
     let note: String?
     let phase_index: Double?
     let since_dispatch_ms: Double?
+    let attempt: Double?
+    let outcome: String?
+    let http_status: Double?
+    let latency_ms: Double?
+    let attempts: Double?
+    let total_ms: Double?
+    let error: String?
     let at: Double?
     let seq: Double?
 
     /// The allowlisted draft as a stampable row, or nil to drop it whole.
     func row() -> [String: JSONValue]? {
-        guard event_name == Self.allowedEvent else { return nil }
-        var out: [String: JSONValue] = ["event_name": .string(event_name)]
+        let fields = eventFields()
+        guard let fields else {
+            return nil
+        }
+
+        var out = fields
+        out["event_name"] = .string(event_name)
+        if let at {
+            out["at"] = .number(at)
+        }
+
+        if let seq {
+            out["seq"] = .number(seq)
+        }
+
+        out["realm"] = .string("injected") // an injected draft is always injected-realm
+        return out
+    }
+
+    private func eventFields() -> [String: JSONValue]? {
+        switch event_name {
+        case Self.allowedEvent:
+            return phaseFields()
+        case Self.profileAttemptEvent:
+            return profileAttemptFields()
+        case Self.profileResultEvent:
+            return profileResultFields()
+        default:
+            return nil
+        }
+    }
+
+    private func phaseFields() -> [String: JSONValue] {
+        var out: [String: JSONValue] = [:]
         if let phase { out["phase"] = .string(String(phase.prefix(Self.maxStringLength))) }
         if let note { out["note"] = .string(String(note.prefix(Self.maxStringLength))) }
         if let phase_index { out["phase_index"] = .number(phase_index) }
         if let since_dispatch_ms { out["since_dispatch_ms"] = .number(since_dispatch_ms) }
-        if let at { out["at"] = .number(at) }
-        if let seq { out["seq"] = .number(seq) }
-        out["realm"] = .string("injected") // an injected draft is always injected-realm
+        return out
+    }
+
+    private func profileAttemptFields() -> [String: JSONValue]? {
+        guard let attempt, let outcome, AuthProfileFailure.outcomes.contains(outcome) else {
+            return nil
+        }
+
+        var out: [String: JSONValue] = ["attempt": .number(attempt), "outcome": .string(outcome)]
+        if let http_status {
+            out["http_status"] = .number(http_status)
+        }
+
+        if let latency_ms {
+            out["latency_ms"] = .number(latency_ms)
+        }
+
+        return out
+    }
+
+    private func profileResultFields() -> [String: JSONValue]? {
+        guard let outcome, AuthProfileFailure.outcomes.contains(outcome) else {
+            return nil
+        }
+
+        var out: [String: JSONValue] = ["outcome": .string(outcome)]
+        if let attempts {
+            out["attempts"] = .number(attempts)
+        }
+
+        if let total_ms {
+            out["total_ms"] = .number(total_ms)
+        }
+
+        guard let error else {
+            return out
+        }
+
+        guard AuthProfileFailure.errorCodes.contains(error) else {
+            return nil
+        }
+
+        out["error"] = .string(error)
         return out
     }
 }

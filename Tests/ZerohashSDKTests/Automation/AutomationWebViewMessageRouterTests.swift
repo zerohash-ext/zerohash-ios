@@ -8,6 +8,11 @@ import UIKit
 /// dispatch-routing suite; the rest is not yet backfilled here.
 @Suite("AutomationWebViewMessageRouter error contract")
 struct AutomationWebViewMessageRouterErrorContractTests {
+    private let fictionalUserId = "8b0c2f4e-1a2b-4c3d-9e8f-0a1b2c3d4e5f"
+
+    private var fictionalProfile: AuthProfile {
+        AuthProfile(userId: fictionalUserId, firstName: "Jane Mary", lastName: "Doe")
+    }
 
     /// Records every reply / event the router emits.
     final class FakeReplySink: AutomationWebViewReplySink {
@@ -171,5 +176,72 @@ struct AutomationWebViewMessageRouterErrorContractTests {
         #expect(R.isSafeToRetry(operation: "auth.login") == true)
         #expect(R.isSafeToRetry(operation: "getBalance") == true)
         #expect(R.isSafeToRetry(operation: "getDepositAddress") == true)
+    }
+
+    private func object(_ value: JSONValue?) -> [String: JSONValue]? {
+        switch value {
+        case .object(let fields)?:
+            return fields
+        default:
+            return nil
+        }
+    }
+
+    @Test("an auth.status profile failure is a success reply carrying the failure")
+    func statusProfileFailure() async {
+        let failure = AuthProfileFailure.forReason("graphql_error")
+        let sink = FakeReplySink()
+        let router = makeRouter(
+            seed: [StubAuthFlow(id: "cbase", status: .init(loggedIn: true, profileFailure: failure))], sink: sink)
+
+        await router.dispatch(ZeroAuthRequest(id: "pf1", platform: "cbase", operation: "auth.status"))
+
+        let r = sink.responses[0]
+        #expect(r.success == true)
+        #expect(r.error == nil)
+        #expect(r.retryable == false)
+        #expect(r.data == .object([
+            "loggedIn": .bool(true),
+            "profileFailure": .object(["error": .string("PROFILE_INDETERMINATE"), "reason": .string("graphql_error")]),
+        ]))
+    }
+
+    @Test("an auth.login profile failure is a success reply carrying the outcome and the failure")
+    func loginProfileFailure() async {
+        let failure = AuthProfileFailure.forReason("missing_field")
+        let login = AuthLoginResult(loggedIn: true, outcome: "success", profileFailure: failure)
+        let sink = FakeReplySink()
+        let router = makeRouter(seed: [StubAuthFlow(id: "cbase", login: login)], sink: sink)
+
+        await router.dispatch(ZeroAuthRequest(id: "pf2", platform: "cbase", operation: "auth.login"))
+
+        let r = sink.responses[0]
+        #expect(r.success == true)
+        #expect(r.error == nil)
+        #expect(r.retryable == false)
+        #expect(r.data == .object([
+            "loggedIn": .bool(true),
+            "outcome": .string("success"),
+            "profileFailure": .object(["error": .string("PROFILE_INCOMPLETE"), "reason": .string("missing_field")]),
+        ]))
+    }
+
+    @Test("a signed-in status carries only the profile; a signed-out one has neither profile key")
+    func statusProfileOnTheWire() async throws {
+        let sink = FakeReplySink()
+        let router = makeRouter(
+            seed: [StubAuthFlow(id: "cbase", status: .init(loggedIn: true, profile: fictionalProfile))], sink: sink)
+        await router.dispatch(ZeroAuthRequest(id: "pf4", platform: "cbase", operation: "auth.status"))
+        let data = try #require(object(sink.responses[0].data))
+        let p = try #require(object(data["profile"]))
+        #expect(Set(data.keys) == ["loggedIn", "profile"])
+        #expect(Set(p.keys) == ["userId", "firstName", "lastName"])
+        #expect(p["firstName"] == .string("Jane Mary"))
+
+        let outSink = FakeReplySink()
+        let outRouter = makeRouter(seed: [StubAuthFlow(id: "cbase")], sink: outSink)
+        await outRouter.dispatch(ZeroAuthRequest(id: "pf5", platform: "cbase", operation: "auth.status"))
+        let out = try #require(object(outSink.responses[0].data))
+        #expect(Set(out.keys) == ["loggedIn"])
     }
 }

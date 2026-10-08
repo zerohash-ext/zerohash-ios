@@ -4,6 +4,21 @@ import WebKit
 public struct Coinbase: AuthFlow, DepositFlow, BalanceFlow, WithdrawFlow {
     public let id = "cbase"
 
+    static let statusTimeoutMs = 30_000
+    static let profileDeadlineMarginMs = 3_000
+    static let probeTimeoutReason = "timeout"
+    static let probeTransientReason = "http_error"
+    static let profileAttemptLogKeys = ["attempt", "outcome", "http_status", "latency_ms"]
+    static let profileResultLogKeys = ["outcome", "attempts", "total_ms", "error"]
+    static let statusScript: String = {
+        var statusExpression = statusJS
+        while statusExpression.last == ";" || statusExpression.last?.isWhitespace == true {
+            statusExpression.removeLast()
+        }
+
+        return "(function(){ \(domHelpersJS); return (\(statusExpression)); })()"
+    }()
+
     public init() {}
 
     @MainActor
@@ -28,8 +43,7 @@ public struct Coinbase: AuthFlow, DepositFlow, BalanceFlow, WithdrawFlow {
 
         switch reason {
         case .success:
-            let status = try await status(ctx: ctx)
-            return AuthLoginResult(loggedIn: status.loggedIn, outcome: "success")
+            return try await loginProbe(ctx: ctx)
         case .userClosed:
             return AuthLoginResult(loggedIn: false, outcome: "user-closed")
         case .timeout:
@@ -46,6 +60,39 @@ public struct Coinbase: AuthFlow, DepositFlow, BalanceFlow, WithdrawFlow {
             }
             return AuthLoginResult(loggedIn: false, outcome: code, provider: provider)
         }
+    }
+
+    @MainActor
+    private func loginProbe(ctx: ExecutionContext) async throws -> AuthLoginResult {
+        do {
+            let probe = try await status(ctx: ctx)
+
+            return AuthLoginResult(
+                loggedIn: probe.loggedIn,
+                outcome: "success",
+                profile: probe.profile,
+                profileFailure: probe.profileFailure
+            )
+        } catch let error as RunnerError {
+            let reason = Self.loginProbeFailureReason(error)
+            let line = "login status probe failed after sign-in; profileFailure reason=\(reason)"
+            Log.coinbase.warning("\(line, privacy: .public)")
+
+            return Self.loginAfterProbeFailure(reason: reason)
+        }
+    }
+
+    static func loginProbeFailureReason(_ error: RunnerError) -> String {
+        switch error {
+        case .timeout:
+            return probeTimeoutReason
+        case .loadFailed, .navigationLost:
+            return probeTransientReason
+        }
+    }
+
+    static func loginAfterProbeFailure(reason: String) -> AuthLoginResult {
+        AuthLoginResult(loggedIn: true, outcome: "success", profileFailure: AuthProfileFailure.forReason(reason))
     }
 
     /// Remove ALL website data (cookies, localStorage, IndexedDB, caches, …)
@@ -73,7 +120,7 @@ public struct Coinbase: AuthFlow, DepositFlow, BalanceFlow, WithdrawFlow {
 
     @MainActor
     public func status(ctx: ExecutionContext) async throws -> AuthStatusResult {
-        Log.coinbase.debug("status starting URL=https://www.coinbase.com/home timeout=20000ms")
+        Log.coinbase.debug("status starting URL=https://www.coinbase.com/home timeout=\(Self.statusTimeoutMs)ms")
         let start = Date()
 
         let raw: Any?
@@ -94,8 +141,9 @@ public struct Coinbase: AuthFlow, DepositFlow, BalanceFlow, WithdrawFlow {
                         return .waitMore
                     }
                 },
-                injectedScript: Self.statusJS,
-                timeoutMs: 20_000
+                injectedScript: Self.statusScript,
+                arguments: Self.statusArguments(now: Date()),
+                timeoutMs: Self.statusTimeoutMs
             )
         } catch {
             let ms = Int(Date().timeIntervalSince(start) * 1000)
@@ -103,6 +151,30 @@ public struct Coinbase: AuthFlow, DepositFlow, BalanceFlow, WithdrawFlow {
             throw error
         }
 
+        let profileDiag = (raw as? [String: Any])?["profileDiag"] as? [String: Any]
+        if let profileDiag {
+            Self.logProfileDiag(profileDiag)
+        }
+
+        let result = try Self.parseStatus(raw)
+        let ms = Int(Date().timeIntervalSince(start) * 1000)
+        Log.coinbase.debug("status OK in \(ms)ms loggedIn=\(result.loggedIn) profile=\(result.profile != nil)")
+
+        let profileFailure = result.profileFailure
+        if let profileFailure {
+            let line = "error=\(profileFailure.error) reason=\(profileFailure.reason)"
+            Log.coinbase.warning("status profileFailure \(line, privacy: .public)")
+        }
+
+        return result
+    }
+
+    static func statusArguments(now: Date) -> [String: Any] {
+        let nowMs = Int(now.timeIntervalSince1970 * 1000)
+        return ["params": ["profileDeadlineMs": nowMs + statusTimeoutMs - profileDeadlineMarginMs]]
+    }
+
+    static func parseStatus(_ raw: Any?) throws -> AuthStatusResult {
         guard let dict = raw as? [String: Any] else {
             Log.coinbase.error("invalid JS return: not [String: Any]")
             throw PlatformError.invalidJSReturn
@@ -111,9 +183,81 @@ public struct Coinbase: AuthFlow, DepositFlow, BalanceFlow, WithdrawFlow {
             Log.coinbase.error("invalid JS return: dict[loggedIn] not Bool")
             throw PlatformError.invalidJSReturn
         }
-        let ms = Int(Date().timeIntervalSince(start) * 1000)
-        Log.coinbase.debug("status OK in \(ms)ms loggedIn=\(loggedIn)")
-        return AuthStatusResult(loggedIn: loggedIn)
+
+        guard loggedIn else {
+            return AuthStatusResult(loggedIn: false)
+        }
+
+        let profileFailure = dict["profileFailure"] as? [String: Any]
+        if let profileFailure {
+            return failedProfileStatus(reason: profileFailure["reason"] as? String)
+        }
+
+        let profileFields = dict["profile"] as? [String: Any]
+        guard let profileFields else {
+            return failedProfileStatus(reason: "invalid_response")
+        }
+
+        let userId = nonBlankString(profileFields["userId"])
+        let firstName = nonBlankString(profileFields["firstName"])
+        let lastName = nonBlankString(profileFields["lastName"])
+        guard let userId, let firstName, let lastName else {
+            return failedProfileStatus(reason: "missing_field")
+        }
+
+        let profile = AuthProfile(userId: userId, firstName: firstName, lastName: lastName)
+        return AuthStatusResult(loggedIn: true, profile: profile)
+    }
+
+    private static func failedProfileStatus(reason: String?) -> AuthStatusResult {
+        AuthStatusResult(loggedIn: true, profileFailure: AuthProfileFailure.forReason(reason))
+    }
+
+    private static func nonBlankString(_ value: Any?) -> String? {
+        let text = value as? String
+        guard let text, text.contains(where: { !$0.isWhitespace }) else {
+            return nil
+        }
+
+        return text
+    }
+
+    static func describeProfileRow(_ row: [String: Any], keys: [String]) -> String {
+        keys.map { k in "\(k)=\(profileRowValue(row[k]))" }.joined(separator: " ")
+    }
+
+    private static func profileRowValue(_ value: Any?) -> String {
+        guard let value, !(value is NSNull) else {
+            return "-"
+        }
+
+        return "\(value)"
+    }
+
+    private static func logProfileDiag(_ diag: [String: Any]) {
+        let attempts = diag["attempts"] as? [[String: Any]]
+        if let attempts {
+            logFailedAttempts(attempts)
+        }
+
+        let result = diag["result"] as? [String: Any]
+        guard let result else {
+            return
+        }
+
+        let line = describeProfileRow(result, keys: profileResultLogKeys)
+        if result["error"] is String {
+            Log.coinbase.error("auth_profile_result \(line, privacy: .public)")
+        } else {
+            Log.coinbase.debug("auth_profile_result \(line, privacy: .public)")
+        }
+    }
+
+    private static func logFailedAttempts(_ attempts: [[String: Any]]) {
+        for attempt in attempts where (attempt["outcome"] as? String) != "ok" {
+            let line = describeProfileRow(attempt, keys: profileAttemptLogKeys)
+            Log.coinbase.warning("auth_profile_attempt \(line, privacy: .public)")
+        }
     }
 
     // MARK: - DepositFlow
