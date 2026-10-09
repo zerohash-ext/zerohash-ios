@@ -70,5 +70,27 @@ final class EnvironmentTests: XCTestCase {
         XCTAssertFalse(Environment.production.trustedHosts.contains("sdk-mobile.gating.0hash.com"))
         XCTAssertFalse(Environment.sandbox.trustedHosts.contains("sdk-mobile.gating.0hash.com"))
     }
+
+    // MARK: - local shell URL
+
+    func testLocalShellURLDefaultsToLocalhost() {
+        XCTAssertEqual(Environment.localShellURL(environment: [:]), "http://localhost:4200")
+        XCTAssertEqual(Environment.localShellURL(environment: ["ZEROHASH_LOCAL_URL": ""]), "http://localhost:4200")
+    }
+
+    func testLocalShellURLReadsTheLaunchEnvironment() {
+        XCTAssertEqual(
+            Environment.localShellURL(environment: ["ZEROHASH_LOCAL_URL": "https://192.168.1.11:4200/"]),
+            "https://192.168.1.11:4200"
+        )
+    }
+
+    func testLocalTrustedHostsIncludeTheShellHost() {
+        let shellHost = URL(string: Environment.local.cdnBaseURL)?.host
+        XCTAssertNotNil(shellHost)
+        XCTAssertTrue(Environment.local.trustedHosts.contains(shellHost ?? ""))
+        XCTAssertTrue(Environment.local.trustedHosts.contains("localhost"))
+        XCTAssertFalse(Environment.production.trustedHosts.contains("localhost"))
+    }
     #endif
 }

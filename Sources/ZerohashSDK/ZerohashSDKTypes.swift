@@ -49,9 +49,7 @@ public enum Environment {
             case .gating:
                 return "https://sdk-cdn.gating.0hash.com"
             case .local:
-                // The `/mobile` shell served by `nx run mobile:dev` (vite, base
-                // `/mobile`). On a physical device, replace with the Mac's LAN IP.
-                return "http://localhost:4200"
+                return Self.localShellURL()
         #endif
         }
     }
@@ -99,12 +97,32 @@ public enum Environment {
                 ]
             case .local:
                 // Both the `/mobile` shell (:4200) and the `*-web` bundles (:5173)
-                // are served under the `localhost` origin; `securityOrigin.host`
-                // drops the port. `127.0.0.1` covers the alternate loopback form.
-                return ["localhost", "127.0.0.1"]
+                // are served from the shell's host; `securityOrigin.host` drops the
+                // port. `127.0.0.1` covers the alternate loopback form.
+                var hosts = ["localhost", "127.0.0.1"]
+                if let host = URL(string: Self.localShellURL())?.host, !hosts.contains(host) {
+                    hosts.append(host)
+                }
+                return hosts
         #endif
         }
     }
+
+    #if DEBUG
+        /// Origin of the `/mobile` shell served by `nx run mobile:dev` (vite, base
+        /// `/mobile`). Defaults to `localhost`, which only works on the simulator.
+        /// On a physical device, set the `ZEROHASH_LOCAL_URL` launch environment
+        /// variable (Xcode scheme ▸ Run ▸ Arguments) to the Mac's LAN origin, e.g.
+        /// `https://192.168.1.11:4200`.
+        static func localShellURL(
+            environment: [String: String] = ProcessInfo.processInfo.environment
+        ) -> String {
+            guard let value = environment["ZEROHASH_LOCAL_URL"], !value.isEmpty else {
+                return "http://localhost:4200"
+            }
+            return value.hasSuffix("/") ? String(value.dropLast()) : value
+        }
+    #endif
 }
 
 // MARK: - Theme

@@ -240,6 +240,10 @@ class IntegrationsWebViewController: UIViewController,
         config.websiteDataStore = sharedConfig.dataStore
 
         webView = WKWebView(frame: view.bounds, configuration: config)
+        #if DEBUG
+            // Lets Safari Web Inspector attach to the SDK's web view in debug builds.
+            if #available(iOS 16.4, *) { webView.isInspectable = true }
+        #endif
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.isOpaque = false
 
