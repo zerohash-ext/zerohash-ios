@@ -9,6 +9,10 @@ public class ZerohashSDK {
     ///   - jwt: JWT token for authentication
     ///   - environment: Environment to use (defaults to production)
     ///   - theme: UI theme (defaults to system)
+    ///   - appRedirectUrl: Link that brings the user back to your app from another
+    ///     app, such as a wallet after a WalletConnect approval: a universal link or
+    ///     a custom-scheme deep link. Without it, a wallet opens a page that asks the
+    ///     user to return to the app.
     ///   - callbacks: Optional callbacks for fund events
     /// - Returns: A ZerohashFundSession ready to be presented
     @MainActor
@@ -16,12 +20,14 @@ public class ZerohashSDK {
         jwt: String,
         environment: Environment = .production,
         theme: Theme = .system,
+        appRedirectUrl: URL? = nil,
         callbacks: FundCallbacks = FundCallbacks()
     ) -> ZerohashFundSession {
         return ZerohashFundSession(
             jwt: jwt,
             environment: environment,
             theme: theme,
+            appRedirectUrl: appRedirectUrl,
             callbacks: callbacks
         )
     }
@@ -36,6 +42,10 @@ public class ZerohashSDK {
     ///   - jwt: JWT token for authentication
     ///   - environment: Environment to use (defaults to production)
     ///   - theme: UI theme (defaults to system)
+    ///   - appRedirectUrl: Link that brings the user back to your app from another
+    ///     app, such as a wallet after a WalletConnect approval: a universal link or
+    ///     a custom-scheme deep link. Without it, a wallet opens a page that asks the
+    ///     user to return to the app.
     ///   - callbacks: Optional callbacks for deposit events
     /// - Returns: A ZerohashCryptoDepositsSession ready to be presented
     @MainActor
@@ -43,12 +53,14 @@ public class ZerohashSDK {
         jwt: String,
         environment: Environment = .production,
         theme: Theme = .system,
+        appRedirectUrl: URL? = nil,
         callbacks: CryptoDepositsCallbacks = CryptoDepositsCallbacks()
     ) -> ZerohashCryptoDepositsSession {
         return ZerohashCryptoDepositsSession(
             jwt: jwt,
             environment: environment,
             theme: theme,
+            appRedirectUrl: appRedirectUrl,
             callbacks: callbacks
         )
     }
@@ -58,6 +70,10 @@ public class ZerohashSDK {
     ///   - jwt: JWT token for authentication
     ///   - environment: Environment to use (defaults to production)
     ///   - theme: UI theme (defaults to system)
+    ///   - appRedirectUrl: Link that brings the user back to your app from another
+    ///     app, such as a wallet after a WalletConnect approval: a universal link or
+    ///     a custom-scheme deep link. Without it, a wallet opens a page that asks the
+    ///     user to return to the app.
     ///   - callbacks: Optional callbacks for withdrawal events
     /// - Returns: A ZerohashCryptoWithdrawalsSession ready to be presented
     @MainActor
@@ -65,12 +81,14 @@ public class ZerohashSDK {
         jwt: String,
         environment: Environment = .production,
         theme: Theme = .system,
+        appRedirectUrl: URL? = nil,
         callbacks: CryptoWithdrawalsCallbacks = CryptoWithdrawalsCallbacks()
     ) -> ZerohashCryptoWithdrawalsSession {
         return ZerohashCryptoWithdrawalsSession(
             jwt: jwt,
             environment: environment,
             theme: theme,
+            appRedirectUrl: appRedirectUrl,
             callbacks: callbacks
         )
     }
@@ -80,6 +98,10 @@ public class ZerohashSDK {
     ///   - jwt: JWT token for authentication
     ///   - environment: Environment to use (defaults to production)
     ///   - theme: UI theme (defaults to system)
+    ///   - appRedirectUrl: Link that brings the user back to your app from another
+    ///     app, such as a wallet after a WalletConnect approval: a universal link or
+    ///     a custom-scheme deep link. Without it, a wallet opens a page that asks the
+    ///     user to return to the app.
     ///   - callbacks: Optional callbacks for withdrawal events
     /// - Returns: A ZerohashFundWithdrawalsSession ready to be presented
     @MainActor
@@ -87,12 +109,14 @@ public class ZerohashSDK {
         jwt: String,
         environment: Environment = .production,
         theme: Theme = .system,
+        appRedirectUrl: URL? = nil,
         callbacks: FundWithdrawalsCallbacks = FundWithdrawalsCallbacks()
     ) -> ZerohashFundWithdrawalsSession {
         return ZerohashFundWithdrawalsSession(
             jwt: jwt,
             environment: environment,
             theme: theme,
+            appRedirectUrl: appRedirectUrl,
             callbacks: callbacks
         )
     }
@@ -104,5 +128,5 @@ extension ZerohashSDK {
     /// Must track the released git tag — the automation bridge reports it to the
     /// backend as `ios-<version>`, so a stale value misattributes telemetry.
     /// Bump this in the same commit that tags a release.
-    public static let version: String = "1.2.0"
+    public static let version: String = "1.4.0"
 }

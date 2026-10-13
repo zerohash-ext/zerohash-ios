@@ -62,13 +62,15 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
     private weak var webView: WKWebView?
     private let jwt: String
     private let theme: Theme
+    private let appRedirectUrl: URL?
     private let environment: Environment
 
     // MARK: - Initialization
 
-    init(jwt: String, theme: Theme, environment: Environment) {
+    init(jwt: String, theme: Theme, appRedirectUrl: URL?, environment: Environment) {
         self.jwt = jwt
         self.theme = theme
+        self.appRedirectUrl = appRedirectUrl
         self.environment = environment
         super.init()
     }
@@ -166,7 +168,11 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
     }
 
     private func sendConfig() {
-        sendMessageToWeb(type: "config", data: ["theme": theme.toWebValue])
+        var data: [String: Any] = ["theme": theme.toWebValue]
+        if let appRedirectUrl {
+            data["appRedirectUrl"] = appRedirectUrl.absoluteString
+        }
+        sendMessageToWeb(type: "config", data: data)
     }
 
     func sendOAuthCancelled() {
@@ -327,8 +333,10 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
     private func handleMessage(type: String, jsonObject: [String: Any], jsonString: String) {
         switch type {
         case "page-ready":
-            sendJWT()
+            // Config first: the web layer mounts the SDK on the JWT, and reads
+            // appRedirectUrl only once, at mount.
             sendConfig()
+            sendJWT()
 
         case "content-ready":
             delegate?.messageHandlerDidReceiveContentReady(self)

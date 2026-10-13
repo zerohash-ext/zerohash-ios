@@ -10,7 +10,7 @@ import XCTest
 final class IntegrationsWebViewMessageHandlerTests: XCTestCase {
 
     func testRespondsToAuthenticationChallengeSelector() {
-        let handler = IntegrationsWebViewMessageHandler(jwt: "", theme: .light, environment: .sandbox)
+        let handler = IntegrationsWebViewMessageHandler(jwt: "", theme: .light, appRedirectUrl: nil, environment: .sandbox)
 
         XCTAssertTrue(
             handler.responds(to: #selector(WKNavigationDelegate.webView(_:didReceive:completionHandler:)))

@@ -280,7 +280,7 @@ class FundWithdrawalsViewController: UIViewController {
 
 The main entry point for the SDK.
 
-#### `configureFund(jwt:environment:theme:callbacks:)`
+#### `configureFund(jwt:environment:theme:appRedirectUrl:callbacks:)`
 
 Configures a Fund session that can be presented later. Returns a
 `ZerohashFundSession`.
@@ -292,9 +292,10 @@ Configures a Fund session that can be presented later. Returns a
 | `jwt`         | `String`        | —             | JWT token authenticating the end user |
 | `environment` | `Environment`   | `.production` | `.sandbox` or `.production`           |
 | `theme`       | `Theme`         | `.system`     | `.light`, `.dark`, or `.system`       |
+| `appRedirectUrl` | `URL?` | `nil` | Link that brings the user back to your app from another app, such as a wallet. See [App Redirect URL](#app-redirect-url) |
 | `callbacks`   | `FundCallbacks` | empty         | Event callbacks for the Fund flow     |
 
-#### `configureCryptoDeposits(jwt:environment:theme:callbacks:)`
+#### `configureCryptoDeposits(jwt:environment:theme:appRedirectUrl:callbacks:)`
 
 Configures a Crypto Deposits session that can be presented later. Returns a
 `ZerohashCryptoDepositsSession`. Internal vs external destination mode comes
@@ -307,9 +308,10 @@ from the JWT's `deposit_details.to_address`, not from these parameters.
 | `jwt`         | `String`                  | —             | JWT token authenticating the end user                                                                                              |
 | `environment` | `Environment`             | `.production` | `.sandbox` or `.production`                                                                                                        |
 | `theme`       | `Theme`                   | `.system`     | `.light`, `.dark`, or `.system`                                                                                                    |
+| `appRedirectUrl` | `URL?` | `nil` | Link that brings the user back to your app from another app, such as a wallet. See [App Redirect URL](#app-redirect-url) |
 | `callbacks`   | `CryptoDepositsCallbacks` | empty         | Event callbacks for the Crypto Deposits flow (`onClose`, `onCompleted`, `onFailed`, `onDeposit`, `onError`, `onLoaded`, `onEvent`) |
 
-#### `configureCryptoWithdrawals(jwt:environment:theme:callbacks:)`
+#### `configureCryptoWithdrawals(jwt:environment:theme:appRedirectUrl:callbacks:)`
 
 Configures a Crypto Withdrawals session that can be presented later. Returns a
 `ZerohashCryptoWithdrawalsSession`.
@@ -321,9 +323,10 @@ Configures a Crypto Withdrawals session that can be presented later. Returns a
 | `jwt`         | `String`                     | —             | JWT token authenticating the end user           |
 | `environment` | `Environment`                | `.production` | `.sandbox` or `.production`                     |
 | `theme`       | `Theme`                      | `.system`     | `.light`, `.dark`, or `.system`                 |
+| `appRedirectUrl` | `URL?` | `nil` | Link that brings the user back to your app from another app, such as a wallet. See [App Redirect URL](#app-redirect-url) |
 | `callbacks`   | `CryptoWithdrawalsCallbacks` | empty         | Event callbacks for the Crypto Withdrawals flow |
 
-#### `configureFundWithdrawals(jwt:environment:theme:callbacks:)`
+#### `configureFundWithdrawals(jwt:environment:theme:appRedirectUrl:callbacks:)`
 
 Configures a Fund Withdrawals session that can be presented later. Returns a
 `ZerohashFundWithdrawalsSession`.
@@ -335,6 +338,7 @@ Configures a Fund Withdrawals session that can be presented later. Returns a
 | `jwt`         | `String`                   | —             | JWT token authenticating the end user         |
 | `environment` | `Environment`              | `.production` | `.sandbox` or `.production`                   |
 | `theme`       | `Theme`                    | `.system`     | `.light`, `.dark`, or `.system`               |
+| `appRedirectUrl` | `URL?` | `nil` | Link that brings the user back to your app from another app, such as a wallet. See [App Redirect URL](#app-redirect-url) |
 | `callbacks`   | `FundWithdrawalsCallbacks` | empty         | Event callbacks for the Fund Withdrawals flow |
 
 ### ZerohashFundSession / ZerohashCryptoDepositsSession / ZerohashCryptoWithdrawalsSession / ZerohashFundWithdrawalsSession
@@ -612,6 +616,23 @@ ZerohashSDK.configureFund(jwt: token, theme: .system)
 - **`.dark`** — Forces dark theme regardless of device settings
 
 The theme applies to the WebView content and the loading indicator.
+
+## App Redirect URL
+
+Some flows hand the user to another app and back. For example, when the user pays from a self-custody wallet (MetaMask, Phantom, Trust, and others), the SDK opens the wallet app over WalletConnect, and after the user approves, the wallet opens a return link. `appRedirectUrl` is the link that brings the user back to your app.
+
+Without `appRedirectUrl`, the wallet opens a zerohash page in the browser that asks the user to go back to your app. With `appRedirectUrl`, the wallet opens your app directly, and the user continues the flow where they left it.
+
+```swift
+let session = ZerohashSDK.configureFund(
+    jwt: token,
+    appRedirectUrl: URL(string: "yourapp://zerohash-redirect")
+)
+```
+
+- Use a universal link (`https://`) or a custom URL scheme (`yourapp://`). Register it for your app (Associated Domains, or `CFBundleURLTypes` in `Info.plist`).
+- The SDK keeps its own state while the other app is open. When your app receives this URL, do not navigate away from the SDK. Treat the URL as a no-op.
+- The URL must be absolute (with a scheme). A relative URL is ignored, and a wallet then opens the zerohash page instead.
 
 ## Contact
 

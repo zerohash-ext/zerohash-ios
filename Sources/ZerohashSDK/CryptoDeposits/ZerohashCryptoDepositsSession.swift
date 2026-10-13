@@ -8,6 +8,7 @@ public class ZerohashCryptoDepositsSession {
     private let jwt: String
     private let environment: Environment
     private let theme: Theme
+    private let appRedirectUrl: URL?
     private let callbacks: CryptoDepositsCallbacks
     private var webViewController: IntegrationsWebViewController?
     private var isPresented: Bool = false
@@ -22,11 +23,13 @@ public class ZerohashCryptoDepositsSession {
         jwt: String,
         environment: Environment = .production,
         theme: Theme = .system,
+        appRedirectUrl: URL? = nil,
         callbacks: CryptoDepositsCallbacks = CryptoDepositsCallbacks()
     ) {
         self.jwt = jwt
         self.environment = environment
         self.theme = theme
+        self.appRedirectUrl = appRedirectUrl
         self.callbacks = callbacks
     }
 
@@ -43,6 +46,7 @@ public class ZerohashCryptoDepositsSession {
             jwt: jwt,
             environment: environment,
             theme: theme,
+            appRedirectUrl: appRedirectUrl,
             callbacks: IntegrationsWebViewCallbacks(
                 onClose: callbacks.onClose,
                 onCompleted: { data, jsonString in

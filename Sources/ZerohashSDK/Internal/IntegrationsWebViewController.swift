@@ -13,6 +13,7 @@ class IntegrationsWebViewController: UIViewController,
     private let jwt: String
     private let environment: Environment
     private let theme: Theme
+    private let appRedirectUrl: URL?
     private let callbacks: IntegrationsWebViewCallbacks
     /// Hash route segment served by the mobile web app (`/mobile/#<appIdentifier>`),
     /// and the prefix the web app's completion message maps to. `fund` for the
@@ -44,12 +45,14 @@ class IntegrationsWebViewController: UIViewController,
         jwt: String,
         environment: Environment,
         theme: Theme,
+        appRedirectUrl: URL?,
         callbacks: IntegrationsWebViewCallbacks
     ) {
         self.appIdentifier = appIdentifier
         self.jwt = jwt
         self.environment = environment
         self.theme = theme
+        self.appRedirectUrl = appRedirectUrl
         self.callbacks = callbacks
         super.init(nibName: nil, bundle: nil)
     }
@@ -261,6 +264,7 @@ class IntegrationsWebViewController: UIViewController,
         messageHandler = IntegrationsWebViewMessageHandler(
             jwt: jwt,
             theme: theme,
+            appRedirectUrl: appRedirectUrl,
             environment: environment
         )
         messageHandler.delegate = self

@@ -8,6 +8,7 @@ public class ZerohashFundSession {
     private let jwt: String
     private let environment: Environment
     private let theme: Theme
+    private let appRedirectUrl: URL?
     private let callbacks: FundCallbacks
     private var webViewController: IntegrationsWebViewController?
     private var isPresented: Bool = false
@@ -18,11 +19,13 @@ public class ZerohashFundSession {
         jwt: String,
         environment: Environment = .production,
         theme: Theme = .system,
+        appRedirectUrl: URL? = nil,
         callbacks: FundCallbacks = FundCallbacks()
     ) {
         self.jwt = jwt
         self.environment = environment
         self.theme = theme
+        self.appRedirectUrl = appRedirectUrl
         self.callbacks = callbacks
     }
 
@@ -38,6 +41,7 @@ public class ZerohashFundSession {
             jwt: jwt,
             environment: environment,
             theme: theme,
+            appRedirectUrl: appRedirectUrl,
             callbacks: IntegrationsWebViewCallbacks(
                 onClose: callbacks.onClose,
                 // Fund completes a deposit; the bridge hands back the raw payload
