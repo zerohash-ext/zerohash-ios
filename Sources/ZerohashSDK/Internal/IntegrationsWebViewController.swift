@@ -249,6 +249,7 @@ class IntegrationsWebViewController: UIViewController,
         #endif
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.isOpaque = false
+        webView.scrollView.isScrollEnabled = false
 
         if theme.shouldUseDarkMode(in: traitCollection) {
             webView.backgroundColor = Theme.darkBackgroundColor
