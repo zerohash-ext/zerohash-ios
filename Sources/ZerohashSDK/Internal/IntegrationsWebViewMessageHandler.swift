@@ -224,7 +224,11 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
         #endif
     }
 
-    func webView(_ webView: WKWebView, didFailProvisionalLoadWithError error: Error) {
+    func webView(
+        _ webView: WKWebView,
+        didFailProvisionalNavigation navigation: WKNavigation!,
+        withError error: Error
+    ) {
         #if DEBUG
             print(
                 "[Bridge] Failed to load: \(error.localizedDescription) | code: \((error as NSError).code)"
@@ -246,10 +250,13 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
         completionHandler: @escaping @MainActor (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
         #if DEBUG
-            // Sandbox uses internally-signed certificates that iOS simulators don't trust.
-            // Accept them for known sandbox hosts in debug builds only — never compiled into release.
-            let sandboxHosts = Environment.sandbox.trustedHosts
-            if sandboxHosts.contains(challenge.protectionSpace.host),
+            // Sandbox uses internally-signed certificates that iOS simulators don't trust;
+            // local device testing uses an mkcert certificate for the Mac's LAN host, which
+            // WKWebView's default evaluation may reject even when the device has installed
+            // the root (e.g. on MDM-managed devices). Accept server trust for these known
+            // DEBUG hosts only — never compiled into release.
+            let debugTrustedHosts = Set(Environment.sandbox.trustedHosts + environment.trustedHosts)
+            if debugTrustedHosts.contains(challenge.protectionSpace.host),
                 challenge.protectionSpace.authenticationMethod
                     == NSURLAuthenticationMethodServerTrust,
                 let serverTrust = challenge.protectionSpace.serverTrust
@@ -307,24 +314,33 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
         guard let url = navigationAction.request.url else { return nil }
-        let scheme = url.scheme?.lowercased() ?? ""
-        let host = url.host ?? ""
 
-        if scheme == "http" || scheme == "https" {
-            guard environment.trustedHosts.contains(host) else {
-                Log.error("[Bridge] Blocked popup to untrusted host: \(host)")
-                return nil
-            }
-        } else {
-            let safeSchemes: Set<String> = ["tel", "mailto", "sms"]
-            guard safeSchemes.contains(scheme) else {
-                Log.error("[Bridge] Blocked popup to unknown scheme: \(scheme)")
-                return nil
-            }
+        let sourceHost = navigationAction.sourceFrame.securityOrigin.host
+        guard Self.canOpenPopup(sourceHost: sourceHost, scheme: url.scheme, in: environment) else {
+            Log.error("[Bridge] Blocked popup from \(sourceHost) to scheme \(url.scheme ?? "")")
+            return nil
         }
 
         UIApplication.shared.open(url, options: [:], completionHandler: nil)
         return nil
+    }
+
+    private static let browserSchemes: Set<String> = ["http", "https", "tel", "mailto", "sms"]
+
+    /// The destination is not gated: the popup goes to an out-of-process browser
+    /// with no bridge or JWT access, and third-party help links are the normal case.
+    /// The source origin is the boundary instead, as in
+    /// `userContentController(_:didReceive:)` — sub-frames may be third-party
+    /// (OAuth), and page JS cannot spoof `securityOrigin`.
+    static func canOpenPopup(sourceHost: String, scheme: String?, in environment: Environment) -> Bool {
+        guard environment.trustedHosts.contains(sourceHost) else { return false }
+        return canOpenExternally(scheme: scheme)
+    }
+
+    /// Schemes the system browser may receive.
+    static func canOpenExternally(scheme: String?) -> Bool {
+        guard let scheme = scheme?.lowercased() else { return false }
+        return browserSchemes.contains(scheme)
     }
 
     // MARK: - Private
