@@ -65,6 +65,7 @@ class IntegrationsWebViewController: UIViewController,
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        WalletSchemeStore.shared.refreshIfStale()
 
         extendedLayoutIncludesOpaqueBars = true
         edgesForExtendedLayout = .all
@@ -358,8 +359,7 @@ class IntegrationsWebViewController: UIViewController,
             // host (Robinhood, Gemini, etc.). Gate on scheme only — a trusted-host
             // allow-list here would defeat the purpose of external navigation and
             // block every redirect integration.
-            let safeSchemes: Set<String> = ["https", "http", "tel", "mailto", "sms"]
-            guard safeSchemes.contains(scheme) else {
+            guard ExternalSchemePolicy.isAllowed(scheme) else {
                 Log.error("[Integrations] Blocked external navigation to unknown scheme: \(scheme)")
                 return
             }
