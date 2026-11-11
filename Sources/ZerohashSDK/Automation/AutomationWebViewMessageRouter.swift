@@ -58,13 +58,13 @@ final class AutomationWebViewMessageRouter: BridgeEventEmitting {
         // The web side hides every automation integration when
         // `hideAutomationIntegrations` is true.
         if req.operation == "core.ping" {
-            let v = "ios-\(ZerohashSDK.version)"
             let data: JSONValue = .object([
                 "ok": .bool(true),
-                "version": .string(v),
+                "sdk": .string("ios"),
+                "version": .string(ZerohashSDK.version),
                 "hideAutomationIntegrations": .bool(!isAutomationSupported()),
             ])
-            Log.automation.debug("core.ping OK id=\(req.id, privacy: .public) version=\(v, privacy: .public)")
+            Log.automation.debug("core.ping OK id=\(req.id, privacy: .public) version=\(ZerohashSDK.version, privacy: .public)")
             sink?.send(response: ZeroAuthResponse(
                 id: req.id, success: true, data: data, error: nil, sessionId: nil
             ))

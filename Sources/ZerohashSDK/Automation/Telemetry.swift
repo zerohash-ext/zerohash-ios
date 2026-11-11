@@ -244,7 +244,8 @@ enum TelemetryStamper {
             row["realm"] = .string(realm(draft))
             row["request_id"] = .string(dims.requestId)
             row["dispatch_id"] = draft["dispatch_id"] ?? .null
-            row["extension_version"] = .string("ios-\(ZerohashSDK.version)")
+            row["sdk"] = .string("ios")
+            row["version"] = .string(ZerohashSDK.version)
             row["browser"] = .string(browser)
             row["platform_id"] = .string(dims.platformId)
             row["operation"] = .string(dims.operation)

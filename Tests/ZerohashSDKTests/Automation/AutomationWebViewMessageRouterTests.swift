@@ -104,6 +104,20 @@ struct AutomationWebViewMessageRouterErrorContractTests {
         #expect(fields["hideAutomationIntegrations"] == .bool(false))
     }
 
+    @Test("core.ping reports the iOS SDK and its plain version, and nothing else")
+    func pingReportsSdkAndVersion() async {
+        let sink = FakeReplySink()
+        let router = makeRouter(seed: [], sink: sink)
+        await router.dispatch(ZeroAuthRequest(id: "p3", platform: "cbase", operation: "core.ping"))
+        guard case .object(let fields)? = sink.responses.first?.data else {
+            Issue.record("expected an object payload")
+            return
+        }
+        #expect(Set(fields.keys) == ["ok", "sdk", "version", "hideAutomationIntegrations"])
+        #expect(fields["sdk"] == .string("ios"))
+        #expect(fields["version"] == .string(ZerohashSDK.version))
+    }
+
     @Test("core.ping asks the web side to hide automation integrations on an unsupported OS")
     func pingSetsHideFlagWhenUnsupported() async {
         let sink = FakeReplySink()

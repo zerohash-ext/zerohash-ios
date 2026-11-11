@@ -60,7 +60,7 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
 
     weak var delegate: IntegrationsWebViewMessageHandlerDelegate?
     private weak var webView: WKWebView?
-    private let jwt: String
+    private var jwt: String
     private let theme: Theme
     private let appRedirectUrl: URL?
     private let environment: Environment
@@ -165,6 +165,12 @@ class IntegrationsWebViewMessageHandler: NSObject, WKScriptMessageHandler, WKNav
 
     private func sendJWT() {
         sendMessageToWeb(type: "jwt", data: ["token": jwt, "env": environment.toWebValue])
+    }
+
+    // Stored, not only sent: a web view reload (`page-ready`) must send the new token.
+    func updateJwt(_ newJwt: String) {
+        jwt = newJwt
+        sendJWT()
     }
 
     private func sendConfig() {

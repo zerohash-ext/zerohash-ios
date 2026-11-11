@@ -125,8 +125,5 @@ public class ZerohashSDK {
 // MARK: - SDK Version
 
 extension ZerohashSDK {
-    /// Must track the released git tag — the automation bridge reports it to the
-    /// backend as `ios-<version>`, so a stale value misattributes telemetry.
-    /// Bump this in the same commit that tags a release.
-    public static let version: String = "1.4.0"
+    public static let version: String = "1.5.0"
 }

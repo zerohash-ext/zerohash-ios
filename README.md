@@ -56,7 +56,7 @@ Add ZerohashSDK as a dependency in your `Package.swift` file:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/zerohash-ext/zerohash-ios", .upToNextMinor(from: "1.3.0"))
+    .package(url: "https://github.com/zerohash-ext/zerohash-ios", .upToNextMinor(from: "1.5.0"))
 ]
 ```
 
@@ -358,6 +358,12 @@ Cancels the session if it is active.
 #### `isActive`
 
 A boolean indicating whether the session is currently active.
+
+#### `updateJwt(_:)`
+
+Gives the running flow a new JWT without relaunching it, for example when your backend issues one token for each deposit or withdrawal. Returns `false`, and changes nothing, if the flow is not showing (never presented, or already closed) or the JWT is empty.
+
+The flow takes the new token at once: later requests use it, and the screen follows the new token's claims (for example a preset deposit amount). Requests already in flight keep the old token.
 
 ### Types
 

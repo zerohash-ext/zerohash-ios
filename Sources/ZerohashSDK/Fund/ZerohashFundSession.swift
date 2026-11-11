@@ -82,6 +82,14 @@ public class ZerohashFundSession {
         viewController.present(nav, animated: true)
     }
 
+    /// Gives the running flow a new JWT. Returns `false` if the flow is not showing or the JWT is empty.
+    @discardableResult
+    public func updateJwt(_ jwt: String) -> Bool {
+        guard isPresented, !jwt.isEmpty, let webViewController, !webViewController.didFireClose else { return false }
+        webViewController.updateJwt(jwt)
+        return true
+    }
+
     /// Cancels the current session
     public func cancel() {
         webViewController?.dismiss(animated: true)

@@ -23,7 +23,7 @@ class IntegrationsWebViewController: UIViewController,
 
     private var loadingManager: WebViewLoadingManager!
     private var messageHandler: IntegrationsWebViewMessageHandler!
-    private var didFireClose = false
+    private(set) var didFireClose = false
 
     /// Shared process pool + persistent data store so a Coinbase login session
     /// carries across the Fund WebView, the offscreen `auth.status` runner, and
@@ -312,6 +312,10 @@ class IntegrationsWebViewController: UIViewController,
         loadingManager = WebViewLoadingManager(parentView: view, theme: theme, brand: loaderBrand)
         loadingManager.delegate = self
         loadingManager.setupLoadingView(in: traitCollection)
+    }
+
+    func updateJwt(_ jwt: String) {
+        messageHandler.updateJwt(jwt)
     }
 
     private func loadWebContent() {
